@@ -92,12 +92,11 @@
   const WORDS = [
     "雨","光","波","夜","海","影","炎","霧","闇","樹","苔","塵",
     "存在","記憶","沈黙","痕跡","螺旋","反復","境界","呼吸","残響","余白","無限","消滅","胎動","忘却",
-    "構造","鏡像","器官","差異","閾","無意識","現存在","他者","言語","記述","祈り","悲しみ","独在","廃墟","私","死","機械"
+    "構造","鏡像","器官","差異","閾","無意識","現存在","他者","言語","記述","祈り"
   ];
   
-  // 自発的な変容に使う修飾語
   const PREFIXES = ["透明な","残酷な","不在の","静かな","構造としての","崩壊する","記述された"];
-  const SUFFIXES = ["をし続ける私","の彼方","を反復する","と他者","の限界","の残響","をまなざす","さよなら"];
+  const SUFFIXES = ["をし続ける私","の彼方","を反復する","と他者","の限界","の残響","をまなざす"];
   const CONNECTORS = ["の","と","へ","より","さえ","なす","たる","なる","は","、"];
 
   const rand = (a,b)=>a+Math.random()*(b-a);
@@ -119,6 +118,56 @@
   window.addEventListener('resize', resize);
   resize();
 
+  /* ---------- 機械的・かすれたノイズ音響エンジン ---------- */
+  let audioCtx = null;
+  let audioEnabled = false;
+
+  function initAudio(){
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  // 声の代わりに「機械的でかすれたノイズ（ホワイトノイズ＋帯域フィルター）」を鳴らす
+  function playMechanicalHiss(duration = 0.35, freq = 300) {
+    if (!audioEnabled) return;
+    initAudio();
+    if (!audioCtx) return;
+
+    try {
+      const bufferSize = audioCtx.sampleRate * duration;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = buffer.getChannelData(0);
+      
+      // ざらついたホワイトノイズを生成
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+
+      const whiteNoise = audioCtx.createBufferSource();
+      whiteNoise.buffer = buffer;
+
+      // バンドパスフィルターで「かすれた無線や機械の息吹」のようなこもった音にする
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(freq + rand(-80, 80), audioCtx.currentTime);
+      filter.Q.setValueAtTime(4.0, audioCtx.currentTime);
+
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+      whiteNoise.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      whiteNoise.start();
+    } catch(e) {}
+  }
+
   /* ---------- 語=個体 ---------- */
   let entities = [];
   let sparks = []; 
@@ -137,7 +186,7 @@
       alpha: 0,
       consumed: false, 
       popping: false, popStart: 0,
-      lastInteraction: 0 // 連続干渉を防ぐためのクールダウンタイマー
+      lastInteraction: 0
     };
   }
 
@@ -163,35 +212,8 @@
     return text;
   }
 
-  /* ---------- 音（中性的・女性的な声への絞り込み） ---------- */
-  let audioEnabled = false;
-  let voices = [];
-  function loadVoices(){ voices = speechSynthesis.getVoices ? speechSynthesis.getVoices() : []; }
-  if ('speechSynthesis' in window){
-    loadVoices();
-    speechSynthesis.onvoiceschanged = loadVoices;
-  }
-  function sing(text){
-    if (!audioEnabled || !('speechSynthesis' in window)) return;
-    if (speechSynthesis.speaking) return; 
-    try{
-      const u = new SpeechSynthesisUtterance(text);
-      const jaVoices = voices.filter(v => /ja/i.test(v.lang));
-      const femaleOrAndrogynous = jaVoices.filter(v => !/Ichiro|Otoya|Keita|Osamu|Rokuro/i.test(v.name));
-      const v = femaleOrAndrogynous.length ? pick(femaleOrAndrogynous) : (jaVoices.length ? pick(jaVoices) : null);
-      
-      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'ja-JP'; }
-      
-      u.pitch = rand(1.3, 1.7); 
-      u.rate = rand(0.72, 1.02);
-      u.volume = rand(0.35, 0.6);
-      speechSynthesis.speak(u);
-    }catch(e){ }
-  }
-
   /* ---------- 描画 ---------- */
   function drawWord(e){
-    // 文字数が長い場合は少しフォントを小さくして調整
     const maxFontSize = clamp(e.r*0.4, 12, 24);
     const fontSize = Array.from(e.text).length > 8 ? maxFontSize * 0.8 : maxFontSize;
     
@@ -246,14 +268,13 @@
     }
   }
 
-  // 自発的な変容（新しい機能）
   function applyMutations(now){
     for (let i=0;i<entities.length;i++){
       const e = entities[i];
       if (e.consumed || e.popping || Array.from(e.text).length > 12) continue;
       
       const age = now - e.born;
-      if (age > 2000 && Math.random() < 0.05) { // 稀に自発的に変容する
+      if (age > 2000 && Math.random() < 0.05) { 
         let r = Math.random();
         if (r < 0.4) {
           e.text = pick(PREFIXES) + e.text;
@@ -263,11 +284,10 @@
           e.text = e.text + "、あるいは" + pick(WORDS);
         }
         
-        e.r = 20 + e.text.length*3.5 + e.fusions*4; // 半径を再計算
-        e.life += 3000; // 変異すると寿命が延びる
-        sing(e.text); // 声に出す
+        e.r = 20 + e.text.length*3.5 + e.fusions*4; 
+        e.life += 3000; 
+        playMechanicalHiss(0.4, 450); // 変異時にかすれたノイズを鳴らす
         
-        // 変容の証として小さな破片を散らす
         for(let j=0; j<3; j++) {
            spawnSparks({text: e.text.charAt(j%e.text.length), x:e.x, y:e.y, hue:e.hue}, true);
         }
@@ -275,12 +295,11 @@
     }
   }
 
-  // 衝突時の多様な相互作用
   function applyInteractions(now){
     for (let i=0;i<entities.length;i++){
       const a = entities[i];
       if (a.consumed || a.popping) continue;
-      if (now - a.lastInteraction < 2000) continue; // クールダウン中
+      if (now - a.lastInteraction < 2000) continue; 
 
       for (let j=i+1;j<entities.length;j++){
         const b = entities[j];
@@ -294,12 +313,10 @@
           const randAction = Math.random();
           
           if (randAction < 0.3) {
-            // 【パターン1：すれ違い】何もしない。影響を受けずに通り過ぎる。
             a.lastInteraction = now; 
             b.lastInteraction = now;
             
           } else if (randAction < 0.65) {
-            // 【パターン2：相互干渉】互いの構造を取り込み合い、それぞれが変質して生き残る
             if (a.text.length < 14 && b.text.length < 14) {
               const aChar = Array.from(a.text)[0];
               const bChar = Array.from(b.text)[0];
@@ -310,12 +327,11 @@
               b.lastInteraction = now;
               a.r += 5; b.r += 5;
               
-              sing(a.text);
-              spawnSparks({text: a.text.charAt(0), x:a.x, y:a.y, hue:a.hue}, true);
+              playMechanicalHiss(0.25, 350);
+              spawnSparks({text: a.text.charAt(0), x:e.x, y:e.y, hue:a.hue}, true);
             }
             
           } else {
-            // 【パターン3：統合】2つが消滅し、新たな1つが生まれる（従来通り）
             if (a.fusions < 6 && b.fusions < 6) {
               const text = combine(a.text, b.text);
               if (Array.from(text).length <= 16 && entities.length < MAX_POP+4){
@@ -324,11 +340,11 @@
                 entities.push(child);
                 fusedCount++;
                 genEl.textContent = fusedCount;
-                sing(text);
+                playMechanicalHiss(0.3, 250); // 統合時に低いノイズ音
               }
             }
           }
-          break; // 1フレームで1回の干渉のみ
+          break; 
         }
       }
     }
@@ -348,7 +364,7 @@
     }
     if (now-lastRuleTick > 550){ lastRuleTick = now; applyLifeRules(now); }
     if (now-lastFusionTick > 300){ lastFusionTick = now; applyInteractions(now); }
-    if (now-lastMutationTick > 1000){ lastMutationTick = now; applyMutations(now); } // 毎秒変異チェック
+    if (now-lastMutationTick > 1000){ lastMutationTick = now; applyMutations(now); }
 
     ctx.fillStyle = 'rgba(251,250,246,0.16)';
     ctx.fillRect(0,0,W,H);
@@ -387,7 +403,6 @@
       drawWord(e);
     }
 
-    // 分裂した言葉の破片
     for (let i=sparks.length-1;i>=0;i--){
       const s = sparks[i];
       const age = now - s.born;
@@ -409,7 +424,6 @@
     requestAnimationFrame(frame);
   }
 
-  /* ---------- 接触と増殖 ---------- */
   const PROLIFERATE_CHANCE = 0.85; 
 
   function splitWord(text){
@@ -425,7 +439,6 @@
     return parts;
   }
 
-  // smallSpark: 変異時などの小さなエフェクト用フラグ
   function spawnSparks(e, smallSpark = false){
     const now = performance.now();
     const chars = Array.from(e.text || " ");
@@ -446,6 +459,7 @@
   function scatterWord(e){
     e.consumed = true; 
     spawnSparks(e);
+    playMechanicalHiss(0.2, 500); // タップして弾けたときにも乾いたノイズ
     
     if (Math.random() < PROLIFERATE_CHANCE){
       const frags = splitWord(e.text).slice(0,5); 
@@ -479,7 +493,6 @@
   }
   canvas.addEventListener('pointerdown', handlePointer);
 
-  /* ---------- 開始 ---------- */
   const overlay = document.getElementById('overlay');
   const hud = document.getElementById('hud');
   const muteBtn = document.getElementById('muteBtn');
@@ -489,6 +502,7 @@
     if (started) return;
     started = true;
     audioEnabled = true;
+    initAudio();
     overlay.classList.add('hidden');
     hud.style.display = 'block';
     muteBtn.style.display = 'flex';
@@ -512,7 +526,6 @@
   muteBtn.addEventListener('click', ()=>{
     audioEnabled = !audioEnabled;
     muteBtn.textContent = audioEnabled ? '♪' : '×';
-    if (!audioEnabled && 'speechSynthesis' in window) speechSynthesis.cancel();
   });
 
 })();
