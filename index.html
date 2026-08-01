@@ -237,160 +237,189 @@
       : chars.slice(0,maxLen).join("");
   }
 
-  /* =========================================================
-     生態ルール
-  ========================================================= */
+ /* =========================================================
+生態ルール（完全書き換え版）
+========================================================= */
+
+/*
+sizeClass:
+seed  = 1〜2文字
+small = 3〜5文字
+medium= 6〜10文字
+large = 11文字以上
+ただし、二文字でも 8% の確率で large になりうる「例外個体」が存在する。
+*/
+
+function classifySize(text){
+  const len = charLen(text);
+
+  // 二文字でも large レベルになる例外（8%）
+  if(len === 2 && chance(0.08)) return "large";
+
+  if(len <= 2) return "seed";
+  if(len <= 5) return "small";
+  if(len <= 10) return "medium";
+  return "large";
+}
+
+/*
+createTraits:
+各個体の生態的パラメータを決定する。
+- longevity: 寿命係数
+- fertility: 繁殖力
+- fragility: 壊れやすさ
+- drift: 漂流性（速度係数）
+- rarity: 稀少性（視覚的な輪郭などに反映）
+*/
+
+function createTraits(text, fusions){
+  const len = charLen(text);
+  const sizeClass = classifySize(text);
+
+  let longevity = 1;
+  let fertility = 1;
+  let fragility = 1;
+  let drift = 1;
+  let rarity = 0;
+
+  if(sizeClass === "seed"){
+    longevity = rand(0.35, 0.72);
+    fertility = rand(1.25, 1.85);
+    fragility = rand(1.25, 1.8);
+    drift     = rand(1.25, 1.8);
+  }else if(sizeClass === "small"){
+    longevity = rand(0.72, 1.05);
+    fertility = rand(1.05, 1.5);
+    fragility = rand(1.0, 1.35);
+    drift     = rand(1.0, 1.35);
+  }else if(sizeClass === "medium"){
+    longevity = rand(1.05, 1.55);
+    fertility = rand(0.78, 1.12);
+    fragility = rand(0.72, 1.0);
+    drift     = rand(0.7, 1.0);
+  }else{ // large
+    longevity = rand(1.55, 2.45);
+    fertility = rand(0.45, 0.8);
+    fragility = rand(0.38, 0.72);
+    drift     = rand(0.38, 0.7);
+  }
+
+  // 融合回数による寿命補正
+  longevity *= 1 + Math.min(fusions, 8) * 0.12;
 
   /*
-    sizeClass:
-      seed   = 1〜2文字
-      small  = 3〜5文字
-      medium = 6〜10文字
-      large  = 11文字以上
-
-    原則:
-      大きい言葉ほど寿命が長い
-      小さい言葉ほど寿命が短い
-      ただし例外個体が存在する
+  例外1: 小さいのに異様に長命な「種子個体」
+  （二文字 large との詩的な共鳴を保つ）
   */
+  const immortalSeed =
+    (sizeClass === "seed") &&
+    chance(0.075);
 
-  function classifySize(text){
-    const len = charLen(text);
-    if(len <= 2) return "seed";
-    if(len <= 5) return "small";
-    if(len <= 10) return "medium";
-    return "large";
+  if(immortalSeed){
+    longevity *= rand(4.2, 8.5);
+    fertility *= rand(0.35, 0.7);
+    fragility *= 0.35;
+    rarity    += 3;
   }
 
-  function createTraits(text,fusions){
-    const len = charLen(text);
-    const sizeClass = classifySize(text);
+  /*
+  例外2: 大きいのに突然崩壊しやすい「早逝個体」
+  （二文字 large も large として扱われる）
+  */
+  const doomedGiant =
+    (sizeClass === "large") &&
+    chance(0.10);
 
-    let longevity = 1;
-    let fertility = 1;
-    let fragility = 1;
-    let drift = 1;
-    let rarity = 0;
-
-    if(sizeClass === "seed"){
-      longevity = rand(0.35,0.72);
-      fertility = rand(1.25,1.85);
-      fragility = rand(1.25,1.8);
-      drift = rand(1.25,1.8);
-    }else if(sizeClass === "small"){
-      longevity = rand(0.72,1.05);
-      fertility = rand(1.05,1.5);
-      fragility = rand(1.0,1.35);
-      drift = rand(1.0,1.35);
-    }else if(sizeClass === "medium"){
-      longevity = rand(1.05,1.55);
-      fertility = rand(0.78,1.12);
-      fragility = rand(0.72,1.0);
-      drift = rand(0.7,1.0);
-    }else{
-      longevity = rand(1.55,2.45);
-      fertility = rand(0.45,0.8);
-      fragility = rand(0.38,0.72);
-      drift = rand(0.38,0.7);
-    }
-
-    longevity *= 1 + Math.min(fusions,8) * 0.12;
-
-    /*
-      例外1:
-      小さいのに異様に長命な「種子個体」
-    */
-    const immortalSeed =
-      sizeClass === "seed" &&
-      chance(0.075);
-
-    if(immortalSeed){
-      longevity *= rand(4.2,8.5);
-      fertility *= rand(0.35,0.7);
-      fragility *= 0.35;
-      rarity += 3;
-    }
-
-    /*
-      例外2:
-      大きいのに突然崩壊しやすい「早逝個体」
-    */
-    const doomedGiant =
-      sizeClass === "large" &&
-      chance(0.10);
-
-    if(doomedGiant){
-      longevity *= rand(0.22,0.48);
-      fragility *= rand(1.7,2.7);
-      fertility *= rand(1.1,1.45);
-      rarity += 2;
-    }
-
-    /*
-      例外3:
-      どの大きさにも稀に生まれる突然変異
-    */
-    const anomaly = chance(0.035);
-    if(anomaly){
-      longevity *= rand(0.35,3.6);
-      fertility *= rand(0.5,1.8);
-      fragility *= rand(0.5,1.9);
-      drift *= rand(0.55,1.7);
-      rarity += 1;
-    }
-
-    return {
-      sizeClass,
-      longevity,
-      fertility,
-      fragility,
-      drift,
-      rarity,
-      immortalSeed,
-      doomedGiant,
-      anomaly
-    };
+  if(doomedGiant){
+    longevity *= rand(0.22, 0.48);
+    fragility *= rand(1.7, 2.7);
+    fertility *= rand(1.1, 1.45);
+    rarity    += 2;
   }
 
-  function calcRadius(text,fusions,traits){
-    const len = charLen(text);
+  /*
+  例外3: どの大きさにも稀に生まれる突然変異
+  */
+  const anomaly = chance(0.035);
 
-    let r =
-      18 +
-      Math.pow(len,0.92) * 4.2 +
-      Math.min(fusions,10) * 3.2;
-
-    if(traits.immortalSeed) r *= 0.9;
-    if(traits.doomedGiant) r *= 1.08;
-
-    return clamp(r,18,108);
+  if(anomaly){
+    longevity *= rand(0.35, 3.6);
+    fertility *= rand(0.5, 1.8);
+    fragility *= rand(0.5, 1.9);
+    drift     *= rand(0.55, 1.7);
+    rarity    += 1;
   }
 
-  function calcLife(text,fusions,traits){
-    const len = Math.max(1,charLen(text));
+  return {
+    sizeClass,
+    longevity,
+    fertility,
+    fragility,
+    drift,
+    rarity,
+    immortalSeed,
+    doomedGiant,
+    anomaly
+  };
+}
 
-    /*
-      大きさに対して非線形に伸びる。
-      ただし traits により例外化する。
-    */
-    const structuralLife =
-      8500 +
-      len * 1800 +
-      Math.pow(len,1.75) * 470 +
-      fusions * 3400;
+/*
+calcRadius:
+表示上の半径（存在感）を決定する。
+基本的には文字数と融合回数に応じて大きくなるが、
+二文字 large の場合は特別に巨大化させる。
+*/
 
-    const noise = rand(0.78,1.28);
-    return structuralLife * traits.longevity * noise;
+function calcRadius(text, fusions, traits){
+  const len = charLen(text);
+
+  let r =
+    18 +
+    Math.pow(len, 0.92) * 4.2 +
+    Math.min(fusions, 10) * 3.2;
+
+  // 二文字 large の巨大化
+  if(traits.sizeClass === "large" && len === 2){
+    r *= 1.45;
   }
 
-  function calcMaxSpeed(radius,traits){
-    /*
-      大きい言葉ほど遅く、
-      小さい断片ほど速い。
-    */
-    const base = clamp(1.45 - radius / 120,0.28,1.2);
-    return base * traits.drift * (reduceMotion ? 0.45 : 1);
-  }
+  if(traits.immortalSeed) r *= 0.9;
+  if(traits.doomedGiant)  r *= 1.08;
+
+  return clamp(r, 18, 108);
+}
+
+/*
+calcLife:
+構造的寿命（ミリ秒）を決定する。
+文字数と融合回数に応じて非線形に伸びるが、
+traits.longevity によって例外化される。
+*/
+
+function calcLife(text, fusions, traits){
+  const len = Math.max(1, charLen(text));
+
+  const structuralLife =
+    8500 +
+    len * 1800 +
+    Math.pow(len, 1.75) * 470 +
+    fusions * 3400;
+
+  const noise = rand(0.78, 1.28);
+
+  return structuralLife * traits.longevity * noise;
+}
+
+/*
+calcMaxSpeed:
+大きい言葉ほど遅く、小さい断片ほど速く漂う。
+drift と reduceMotion によって補正される。
+*/
+
+function calcMaxSpeed(radius, traits){
+  const base = clamp(1.45 - radius / 120, 0.28, 1.2);
+  return base * traits.drift * (reduceMotion ? 0.45 : 1);
+}
 
   /* =========================================================
      Canvas
