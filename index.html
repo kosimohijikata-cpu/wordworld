@@ -1248,7 +1248,7 @@
         /*
           接触しても何も起きない。
         */
-        if(action<0.17){
+        if(action<0.45){
           a.lastInteraction=now;
           b.lastInteraction=now;
           break;
@@ -1257,7 +1257,7 @@
         /*
           文字の交換。
         */
-        if(action<0.42){
+        if(action<0.28){
           if(charLen(a.text)<18 && charLen(b.text)<18){
             const aChars=Array.from(a.text);
             const bChars=Array.from(b.text);
@@ -1286,7 +1286,7 @@
           （増殖率40%減少: 0.42 → 0.252）
         */
         const reproductionChance =
-          clamp(0.252*fertility,0.16,0.78);
+          clamp(0.10*fertility,0.16,0.78);
 
         if(
           chance(reproductionChance) &&
