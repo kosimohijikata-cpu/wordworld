@@ -1382,6 +1382,79 @@ function tryApplyTextChange(e, newText){
   }
 
   function applyInteractions(now){
+    /* ---------- クラスタ検出と削除ルール ----------
+   ルール:
+   - ある個体を中心に近接閾値内の個体群をクラスタとみなす
+   - クラスタ内の個体数が4以上なら、そのクラスタから3体を削除する
+   - 削除対象の選び方は下記で「寿命が短い順（life 小）」を優先しているが、
+     ランダムやサイズ優先などに変更可能
+   - 一度処理したクラスタは再処理しない（重複削除防止）
+*/
+
+function removeThreeIfClustered(){
+  const processed = new Set();
+  const now = performance.now();
+
+  // 距離閾値を個体ごとに決める関数（既存の applyLifeRules と整合）
+  function clusterRadiusFor(e){
+    return clamp(92 + e.r * 0.65, 92, 168);
+  }
+
+  for(let i = 0; i < entities.length; i++){
+    const a = entities[i];
+    if(!a) continue;
+    if(a.consumed || a.collapsing) continue;
+    if(processed.has(a)) continue;
+
+    // グループ収集（単純な近接ベース）
+    const group = [a];
+    processed.add(a);
+
+    for(let j = 0; j < entities.length; j++){
+      if(i === j) continue;
+      const b = entities[j];
+      if(!b) continue;
+      if(b.consumed || b.collapsing) continue;
+      if(processed.has(b)) continue;
+
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dist2 = dx*dx + dy*dy;
+      const thresh = Math.pow(clusterRadiusFor(a), 2);
+
+      if(dist2 < thresh){
+        group.push(b);
+        processed.add(b);
+      }
+    }
+
+    // 近接だけでは連鎖的クラスタを拾えない場合があるが、
+    // 単純化のため「中心 a に近いもの」をグループとする。
+    // 必要なら BFS で連結成分を取る実装に置き換えてください。
+
+    if(group.length >= 4){
+      // 削除対象を選ぶロジック
+      // ここでは寿命が短い順に3体を選ぶ（世界観上「弱いものが消える」）
+      // ランダムにしたければ shuffle して slice(0,3) に変更
+      group.sort((p,q) => (p.life - q.life));
+
+      // 削除する3体を取り出す
+      const toRemove = group.slice(0, 3);
+
+      // 削除実行
+      for(const e of toRemove){
+        // 既に消失フラグが立っている可能性があるので二重削除を避ける
+        if(!e) continue;
+        if(e.consumed) continue;
+
+        // 世界観に応じて「消費」フラグを立てるか完全削除するか選べる
+        // ここでは removeEntity を使って配列から取り除く（カウントも更新される想定）
+        removeEntity(e);
+      }
+    }
+  }
+}
+
     for(let i=0;i<entities.length;i++){
       const a = entities[i];
 
