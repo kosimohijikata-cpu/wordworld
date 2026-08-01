@@ -951,8 +951,9 @@
 
     /*
       剥がれた文字の一部が、新しい個体になる。
+      （増殖率40%減少: 0.42 → 0.252）
     */
-    if(ch!=="、" && ch!=="。" && chance(0.42)){
+    if(ch!=="、" && ch!=="。" && chance(0.252)){
       const copies = chance(0.08) ? 2 : 1;
       for(let i=0;i<copies;i++){
         spawnFragmentEntity(ch,e,now,rand(0.9,1.35));
@@ -971,7 +972,8 @@
     spawnSparks(e,false);
 
     pieces.forEach((fragment,index)=>{
-      if(index<1 || chance(0.48)){
+      /* 増殖率40%減少: 0.48 → 0.288 */
+      if(index<1 || chance(0.288)){
         spawnFragmentEntity(
           fragment,
           e,
@@ -995,7 +997,8 @@
     const fragments = fractureText(e.text);
 
     fragments.forEach((fragment,index)=>{
-      if(index<3 || chance(0.52)){
+      /* 増殖率40%減少: 0.52 → 0.312 */
+      if(index<3 || chance(0.312)){
         spawnFragmentEntity(
           fragment,
           e,
@@ -1013,7 +1016,8 @@
      ライフゲーム規則
   ========================================================= */
 
-  const MAX_POP = 102;
+  /* 文字密度40%減少: 102 → 61 */
+  const MAX_POP = 61;
 
   let lastRuleTick = 0;
   let lastFusionTick = 0;
@@ -1151,8 +1155,9 @@
       ) continue;
 
       const age = now-e.born;
+      /* 増殖率40%減少: 0.018 → 0.0108 */
       const mutationChance =
-        0.018*
+        0.0108*
         e.traits.fertility*
         clamp(e.energy,0.5,1.4);
 
@@ -1278,9 +1283,10 @@
           融合・繁殖。
           小型個体ほど成功しやすく、
           大型個体ほど慎重になる。
+          （増殖率40%減少: 0.42 → 0.252）
         */
         const reproductionChance =
-          clamp(0.42*fertility,0.16,0.78);
+          clamp(0.252*fertility,0.16,0.78);
 
         if(
           chance(reproductionChance) &&
@@ -1416,16 +1422,17 @@
     /*
       人口が少ないときは多く補充し、
       多いときはゆっくり補充する。
+      （文字密度40%減少に合わせて間隔延長・バースト削減）
     */
-    if(now-lastSpawnTick>(reduceMotion?760:340)){
+    if(now-lastSpawnTick>(reduceMotion?1267:567)){
       lastSpawnTick=now;
 
       if(entities.length<MAX_POP){
         const lack=MAX_POP-entities.length;
 
         const burst =
-          lack>MAX_POP*0.55 ? 4 :
-          lack>MAX_POP*0.28 ? 3 :
+          lack>MAX_POP*0.55 ? 2 :
+          lack>MAX_POP*0.28 ? 2 :
           1;
 
         for(let k=0;k<burst;k++){
@@ -1650,8 +1657,9 @@
     lastFusionTick=lastFrame;
     lastMutationTick=lastFrame;
 
-    for(let i=0;i<17;i++) spawnPrimordial();
-    for(let i=0;i<11;i++) spawnInside();
+    /* 文字密度40%減少に合わせて初期個体数を削減 */
+    for(let i=0;i<10;i++) spawnPrimordial();
+    for(let i=0;i<7;i++) spawnInside();
 
     requestAnimationFrame(frame);
 
