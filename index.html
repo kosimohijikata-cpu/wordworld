@@ -953,7 +953,7 @@
       剥がれた文字の一部が、新しい個体になる。
       （増殖率40%減少: 0.42 → 0.252）
     */
-    if(ch!=="、" && ch!=="。" && chance(0.252)){
+    if(ch!=="、" && ch!=="。" && chance(0.180)){
       const copies = chance(0.08) ? 2 : 1;
       for(let i=0;i<copies;i++){
         spawnFragmentEntity(ch,e,now,rand(0.9,1.35));
@@ -973,7 +973,7 @@
 
     pieces.forEach((fragment,index)=>{
       /* 増殖率40%減少: 0.48 → 0.288 */
-      if(index<1 || chance(0.288)){
+      if(index<1 || chance(0.188)){
         spawnFragmentEntity(
           fragment,
           e,
@@ -998,7 +998,7 @@
 
     fragments.forEach((fragment,index)=>{
       /* 増殖率40%減少: 0.52 → 0.312 */
-      if(index<3 || chance(0.312)){
+      if(index<3 || chance(0.200)){
         spawnFragmentEntity(
           fragment,
           e,
