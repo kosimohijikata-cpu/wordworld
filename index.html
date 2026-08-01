@@ -351,6 +351,122 @@
       anomaly
     };
   }
+  function classifySize(text){
+  const len = charLen(text);
+
+  // ★ 二文字でも large になる例外（8%）
+  if(len === 2 && chance(0.08)) return "large";
+
+  if(len <= 2) return "seed";
+  if(len <= 5) return "small";
+  if(len <= 10) return "medium";
+  return "large";
+}
+function countBySizeClass(size) {
+  return entities.filter(e =>
+    !e.consumed &&
+    !e.collapsing &&
+    e.traits.sizeClass === size
+  ).length;
+}
+function makeEntity(text, x, y, fusions = 0, vx, vy, inheritedTraits = null){
+  text = trimText(text, 24);
+
+  const traits = inheritedTraits || createTraits(text, fusions);
+
+  // ★ 個体数制限
+  const largeCount = countBySizeClass("large");
+  const mediumCount = countBySizeClass("medium");
+
+  if(traits.sizeClass === "large" && largeCount >= 4) return null;
+  if(traits.sizeClass === "medium" && mediumCount >= 7) return null;
+
+  // ★ 半径計算（2文字 large の巨大化も反映）
+  const r = calcRadius(text, fusions, traits);
+  const maxSpeed = calcMaxSpeed(r, traits);
+
+  const angle = rand(0, Math.PI * 2);
+  const fallbackSpeed = rand(0.12, maxSpeed);
+
+  const actualVx = vx !== undefined ? vx : Math.cos(angle) * fallbackSpeed;
+  const actualVy = vy !== undefined ? vy : Math.sin(angle) * fallbackSpeed;
+
+  return {
+    text,
+    x,
+    y,
+    r,
+    fusions,
+    traits,
+    vx: actualVx,
+    vy: actualVy,
+    maxSpeed,
+    phase: rand(0, Math.PI * 2),
+    born: performance.now(),
+    life: calcLife(text, fusions, traits),
+    alpha: 0,
+    energy: rand(0.78, 1.25),
+    consumed: false,
+    collapsing: false,
+    collapseStart: 0,
+    collapseDuration: 0,
+    nextPeel: 0,
+    peelInterval: 0,
+    lastInteraction: 0,
+    lastMutation: 0,
+    hitLeft: false,
+    hitRight: false,
+    hitTop: false,
+    hitBottom: false,
+    hue: rand(190, 245)
+  };
+}
+function calcRadius(text, fusions, traits){
+  const len = charLen(text);
+
+  let r =
+    18 +
+    Math.pow(len, 0.92) * 4.2 +
+    Math.min(fusions, 10) * 3.2;
+
+  // ★ 二文字 large の巨大化
+  if(traits.sizeClass === "large" && len === 2){
+    r *= 1.45;   // 好みで調整可能
+  }
+
+  if(traits.immortalSeed) r *= 0.9;
+  if(traits.doomedGiant) r *= 1.08;
+
+  return clamp(r, 18, 108);
+}
+function spawnPrimordial(){
+  const margin = 80;
+  const side = (Math.random() * 4) | 0;
+  let x, y, vx, vy;
+
+  const speed = rand(0.12, 0.34) * (reduceMotion ? 0.45 : 1);
+  const drift = rand(-0.16, 0.16);
+
+  if(side === 0){
+    x = rand(0, W); y = -margin - rand(0, 40);
+    vx = drift; vy = speed;
+  } else if(side === 1){
+    x = W + margin + rand(0, 40); y = rand(0, H);
+    vx = -speed; vy = drift;
+  } else if(side === 2){
+    x = rand(0, W); y = H + margin + rand(0, 40);
+    vx = drift; vy = -speed;
+  } else {
+    x = -margin - rand(0, 40); y = rand(0, H);
+    vx = speed; vy = drift;
+  }
+
+  const e = makeEntity(seedText(), x, y, 0, vx, vy);
+  if(e) entities.push(e);   // ★ null を弾く
+}
+const child = makeEntity(...);
+if(child) entities.push(child);
+
 
   function calcRadius(text,fusions,traits){
     const len = charLen(text);
