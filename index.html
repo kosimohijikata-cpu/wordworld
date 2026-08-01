@@ -141,6 +141,15 @@
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const charLen = (t)=>Array.from(t).length;
 
+  // 文字数・融合回数に応じて寿命を伸ばす
+  function calcLife(text, fusions){
+    const len = Math.max(1, charLen(text));
+    const base = rand(28000, 40000);          // 全体的に長め
+    const byLen = len * len * 55 + len * 520; // 長い文章ほど大きく伸びる
+    const byFus = fusions * 5500;
+    return base + byLen + byFus;
+  }
+
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
   let W = innerWidth, H = innerHeight;
@@ -177,7 +186,6 @@
 
   function makeEntity(text, x, y, fusions, vx, vy){
     const len = charLen(text);
-    // 少し小さめの当たり判定で、画面により多く並べる
     const r = 22 + len * 3.4 + fusions * 3.5;
     return {
       text, x, y, r, fusions,
@@ -186,7 +194,7 @@
       hue: rand(0,360),
       phase: rand(0, Math.PI*2),
       born: performance.now(),
-      life: rand(20000, 32000) + fusions * 4500 + len * 280,
+      life: calcLife(text, fusions || 0),
       alpha: 0,
       consumed: false,
       collapsing: false,
@@ -225,13 +233,10 @@
     entities.push(makeEntity(seedText(), x, y, 0, vx, vy));
   }
 
-  // 画面内にも直接湧かせて密度を稼ぐ
   function spawnInside(){
     const x = rand(W * 0.08, W * 0.92);
     const y = rand(H * 0.08, H * 0.92);
-    const e = makeEntity(seedText(), x, y, 0, rand(-0.12,0.12), rand(-0.12,0.12));
-    e.alpha = 0;
-    entities.push(e);
+    entities.push(makeEntity(seedText(), x, y, 0, rand(-0.12,0.12), rand(-0.12,0.12)));
   }
 
   function combine(a, b){
@@ -253,7 +258,31 @@
     return text;
   }
 
-  /* ---------- 音：たまにだけ、金属寄り ---------- */
+  /* ---------- 分裂片を画面各地へ飛ばす ---------- */
+  function scatterVelocity(strength){
+    const ang = rand(0, Math.PI * 2);
+    // 弱・中・強を混ぜて、近くにも遠くにも散らす
+    const roll = Math.random();
+    let spd;
+    if (roll < 0.35) spd = rand(0.25, 0.55) * strength;
+    else if (roll < 0.75) spd = rand(0.55, 1.1) * strength;
+    else spd = rand(1.1, 1.9) * strength;
+    return {
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - rand(0.02, 0.12)
+    };
+  }
+
+  function scatterPosition(x, y, radius){
+    const ang = rand(0, Math.PI * 2);
+    const d = rand(0.2, 1) * radius;
+    return {
+      x: x + Math.cos(ang) * d,
+      y: y + Math.sin(ang) * d
+    };
+  }
+
+  /* ---------- 音 ---------- */
   let audioEnabled = false;
   let voices = [];
   let lastSingAt = 0;
@@ -274,13 +303,12 @@
     return metallic.length ? pick(metallic) : pick(jaVoices);
   }
 
-  // chance: 読む確率。成立のたびに呼ばず、間引きする
   function sing(text, chance){
     if (!audioEnabled || !('speechSynthesis' in window)) return;
     if (speechSynthesis.speaking) return;
     if (Math.random() > (chance == null ? 0.12 : chance)) return;
     const now = performance.now();
-    if (now - lastSingAt < 2200) return; // 最低間隔
+    if (now - lastSingAt < 2200) return;
     try{
       const u = new SpeechSynthesisUtterance(text);
       const jaVoices = voices.filter(v => /ja/i.test(v.lang));
@@ -369,12 +397,14 @@
         if (dx*dx+dy*dy < R*R) neighbors++;
       }
       const age = now - e.born;
-      if (neighbors===0 && age>7000){
-        e.life = Math.min(e.life, age+2400);
+      const len = charLen(e.text);
+      // 長い文章は延命されやすい
+      if (neighbors===0 && age>9000){
+        e.life = Math.min(e.life, age + 2800 + len * 80);
       } else if (neighbors>=10){
-        e.life = Math.min(e.life, age+2000);
+        e.life = Math.min(e.life, age + 2400 + len * 40);
       } else if (neighbors>=1 && neighbors<=6){
-        e.life += 480;
+        e.life += 520 + len * 18;
       }
     }
   }
@@ -394,7 +424,8 @@
 
         e.text = trimText(e.text, 22);
         e.r = 22 + charLen(e.text)*3.4 + e.fusions*3.5;
-        e.life += 4800;
+        // 長くなった分、寿命も伸ばす
+        e.life += 5500 + charLen(e.text) * 120;
         sing(e.text, 0.08);
         for(let j=0; j<2; j++) {
           const ch = Array.from(e.text)[j % Math.max(1, charLen(e.text))] || "・";
@@ -434,11 +465,12 @@
               a.lastInteraction = now;
               b.lastInteraction = now;
               a.r += 5; b.r += 5;
+              a.life += 3000 + charLen(a.text) * 80;
+              b.life += 3000 + charLen(b.text) * 80;
               sing(a.text, 0.06);
             }
 
           } else {
-            // 統合：子を生むだけでなく、親も残す確率を持たせて密度維持
             if (a.fusions < 8 && b.fusions < 8) {
               const text = combine(a.text, b.text);
               if (charLen(text) <= 22 && entities.length < MAX_POP + 8){
@@ -450,13 +482,9 @@
                 genEl.textContent = fusedCount;
                 sing(text, 0.10);
 
-                // 60%で片方だけ消え、40%で両方残る（文章が増えやすい）
                 const fate = Math.random();
-                if (fate < 0.30) {
-                  a.consumed = true;
-                } else if (fate < 0.60) {
-                  b.consumed = true;
-                }
+                if (fate < 0.30) a.consumed = true;
+                else if (fate < 0.60) b.consumed = true;
                 a.lastInteraction = now;
                 b.lastInteraction = now;
               }
@@ -528,10 +556,11 @@
     e.collapsing = true;
     e.collapseStart = now;
     const len = Math.max(1, charLen(e.text));
-    const base = reduceMotion ? 320 : 200;
-    e.peelInterval = base + rand(60, 280) + e.fusions * 70 + len * 22;
-    e.collapseDuration = e.peelInterval * len * rand(1.2, 2.0) + rand(600, 1600);
-    e.nextPeel = now + rand(80, e.peelInterval * 0.5);
+    const base = reduceMotion ? 360 : 240;
+    // 長い文章は崩壊もゆっくり
+    e.peelInterval = base + rand(80, 320) + e.fusions * 80 + len * 36;
+    e.collapseDuration = e.peelInterval * len * rand(1.3, 2.2) + rand(800, 2000);
+    e.nextPeel = now + rand(100, e.peelInterval * 0.5);
     e.vx *= 0.7;
     e.vy *= 0.7;
   }
@@ -549,26 +578,24 @@
     e.text = chars.join('');
     e.r = Math.max(14, 22 + charLen(e.text)*3.4 + e.fusions*3.5);
 
-    const ang = rand(0, Math.PI*2);
-    const speed = rand(0.08, 0.28);
-    const ox = e.x + rand(-6, 6);
-    const oy = e.y + rand(-6, 6);
+    const pos = scatterPosition(e.x, e.y, rand(18, 64));
+    const vel = scatterVelocity(1);
 
     sparks.push({
-      ch, x: ox, y: oy,
-      vx: Math.cos(ang)*speed + e.vx*0.3,
-      vy: Math.sin(ang)*speed + e.vy*0.3 - 0.01,
+      ch, x: pos.x, y: pos.y,
+      vx: vel.vx * 0.7,
+      vy: vel.vy * 0.7,
       born: now,
-      life: rand(2600, 5200) + e.fusions*220,
+      life: rand(3000, 6000) + e.fusions*220,
       hue: e.hue
     });
 
-    if (ch !== '、' && ch !== '。' && Math.random() < 0.48 && entities.length < MAX_POP + 20){
-      const frag = makeEntity(ch, ox, oy, 0,
-        Math.cos(ang)*rand(0.15, 0.45),
-        Math.sin(ang)*rand(0.15, 0.45) - rand(0.02, 0.08)
-      );
-      frag.life = rand(5000, 11000) + e.fusions*500;
+    // 分裂片を各地へ強く飛ばす
+    if (ch !== '、' && ch !== '。' && Math.random() < 0.55 && entities.length < MAX_POP + 20){
+      const far = scatterPosition(e.x, e.y, rand(40, Math.min(W, H) * 0.35));
+      const v2 = scatterVelocity(rand(1.0, 1.6));
+      const frag = makeEntity(ch, far.x, far.y, 0, v2.vx, v2.vy);
+      frag.life = rand(14000, 24000);
       frag.born = now;
       entities.push(frag);
     }
@@ -578,14 +605,14 @@
   function dissolveWord(e){
     const now = performance.now();
     Array.from(e.text).forEach(ch=>{
-      const ang = rand(0, Math.PI*2);
-      const speed = rand(0.04, 0.14);
+      const pos = scatterPosition(e.x, e.y, rand(10, 50));
+      const vel = scatterVelocity(0.8);
       sparks.push({
-        ch, x:e.x, y:e.y,
-        vx: Math.cos(ang)*speed,
-        vy: Math.sin(ang)*speed - 0.015,
+        ch, x:pos.x, y:pos.y,
+        vx: vel.vx,
+        vy: vel.vy,
         born: now,
-        life: rand(3000, 5200),
+        life: rand(3200, 5600),
         hue: e.hue
       });
     });
@@ -598,7 +625,6 @@
     const dt = Math.min(now-lastFrame, 48);
     lastFrame = now;
 
-    // 高密度スポーン：辺から＋画面内
     if (now-lastSpawnTick > (reduceMotion?700:320)){
       lastSpawnTick = now;
       if (entities.length < MAX_POP){
@@ -623,7 +649,6 @@
       const age = now-e.born;
 
       if (e.consumed){ entities.splice(i,1); continue; }
-
       if (!e.collapsing && age >= e.life) beginCollapse(e, now);
 
       if (e.collapsing){
@@ -646,7 +671,7 @@
       if (handleEdges(e)){ entities.splice(i,1); continue; }
 
       const fadeIn = clamp(age/600, 0, 1);
-      const fadeOut = clamp((e.life-age)/2000, 0, 1);
+      const fadeOut = clamp((e.life-age)/2600, 0, 1);
       e.alpha = Math.min(fadeIn, fadeOut) * 0.90;
       drawWord(e);
     }
@@ -655,9 +680,9 @@
       const s = sparks[i];
       const age = now - s.born;
       if (age >= s.life){ sparks.splice(i,1); continue; }
-      s.x += s.vx*dt*0.05;
-      s.y += s.vy*dt*0.05;
-      s.vx *= 0.98; s.vy = s.vy*0.98 - 0.001;
+      s.x += s.vx*dt*0.055;
+      s.y += s.vy*dt*0.055;
+      s.vx *= 0.985; s.vy = s.vy*0.985 - 0.0008;
       ctx.save();
       ctx.globalAlpha = clamp(1 - (age / s.life), 0, 1) * 0.85;
       ctx.fillStyle = `hsla(${s.hue},30%,40%,1)`;
@@ -694,13 +719,13 @@
   function spawnSparks(e, smallSpark = false){
     const now = performance.now();
     Array.from(e.text || "　").forEach(ch=>{
-      const ang = rand(0,Math.PI*2);
+      const pos = scatterPosition(e.x, e.y, smallSpark ? rand(6, 20) : rand(12, 48));
+      const vel = scatterVelocity(smallSpark ? 0.7 : 1.2);
       sparks.push({
-        ch, x:e.x, y:e.y,
-        vx:Math.cos(ang)*(smallSpark ? rand(0.1,0.5) : rand(0.3,1.2)),
-        vy:Math.sin(ang)*(smallSpark ? rand(0.1,0.5) : rand(0.3,1.2)),
+        ch, x:pos.x, y:pos.y,
+        vx:vel.vx, vy:vel.vy,
         born:now,
-        life: smallSpark ? rand(1000,2000) : rand(3000,7000),
+        life: smallSpark ? rand(1000,2000) : rand(3200,7200),
         hue:e.hue || rand(0,360)
       });
     });
@@ -715,13 +740,22 @@
     e.nextPeel = now;
 
     if (Math.random() < PROLIFERATE_CHANCE){
-      splitWord(e.text).slice(0,7).forEach(frag=>{
+      const frags = splitWord(e.text).slice(0,7);
+      frags.forEach((frag, idx)=>{
         if (entities.length >= MAX_POP+24) return;
-        const ang = rand(0,Math.PI*2);
-        const child = makeEntity(frag, e.x, e.y, Math.max(0, e.fusions-1));
-        child.vx = Math.cos(ang)*rand(0.2,0.6);
-        child.vy = -rand(0.05,0.15);
-        child.life = rand(22000, 34000);
+        // 角度を均等寄りにばらして各地へ
+        const baseAng = (idx / Math.max(1, frags.length)) * Math.PI * 2 + rand(-0.4, 0.4);
+        const spd = rand(0.7, 1.8);
+        const pos = scatterPosition(e.x, e.y, rand(30, Math.min(W, H) * 0.28));
+        const child = makeEntity(
+          frag,
+          pos.x,
+          pos.y,
+          Math.max(0, e.fusions-1),
+          Math.cos(baseAng) * spd,
+          Math.sin(baseAng) * spd - rand(0.05, 0.2)
+        );
+        child.life = rand(18000, 30000) + charLen(frag) * 400;
         entities.push(child);
         fusedCount++;
       });
@@ -760,8 +794,6 @@
     running = true;
     lastFrame = performance.now();
     lastSpawnTick = lastFrame; lastRuleTick = lastFrame; lastFusionTick = lastFrame; lastMutationTick = lastFrame;
-
-    // 開始直後から画面を埋める
     for (let i=0;i<28;i++) spawnPrimordial();
     for (let i=0;i<18;i++) spawnInside();
     requestAnimationFrame(frame);
