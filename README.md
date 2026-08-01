@@ -94,7 +94,8 @@
     "存在","記憶","沈黙","痕跡","螺旋","反復","境界","呼吸","残響","余白","無限","消滅","胎動","忘却",
     "構造","鏡像","器官","差異","閾","無意識","現存在","他者","言語","記述","祈り"
   ];
-
+  
+  // 自発的な変容に使う修飾語
   const PREFIXES = ["透明な","残酷な","不在の","静かな","構造としての","崩壊する","記述された"];
   const SUFFIXES = ["をし続ける私","の彼方","を反復する","と他者","の限界","の残響","をまなざす"];
   const CONNECTORS = ["の","と","へ","より","さえ","なす","たる","なる","は","、"];
@@ -120,12 +121,11 @@
 
   /* ---------- 語=個体 ---------- */
   let entities = [];
-  let sparks = [];
-  let fusedCount = 0;
+  let sparks = []; 
+  let fusedCount = 0; 
 
   function makeEntity(text, x, y, fusions, vx, vy){
     const r = 20 + text.length*3.5 + fusions*4;
-    const len = Array.from(text).length;
     return {
       text, x, y, r, fusions,
       vx: (vx!==undefined) ? vx : rand(-0.06,0.06),
@@ -133,48 +133,32 @@
       hue: rand(0,360),
       phase: rand(0, Math.PI*2),
       born: performance.now(),
-      life: rand(11000,17000) + fusions*3200 + len*180,
+      life: rand(11000,17000) + fusions*3200,
       alpha: 0,
-      consumed: false,
-      collapsing: false,
-      collapseStart: 0,
-      collapseDuration: 0,
-      nextPeel: 0,
-      peelInterval: 0,
-      lastInteraction: 0
+      consumed: false, 
+      popping: false, popStart: 0,
+      lastInteraction: 0 // 連続干渉を防ぐためのクールダウンタイマー
     };
   }
 
-  // 上・右・下・左の四辺から漂い込む
+  // 複数の方向から言葉が漂い込んでくる（下・上・左・右）
   function spawnPrimordial(){
-    const margin = 60;
-    const side = (Math.random() * 4) | 0;
-    let x, y, vx, vy;
-    const speed = rand(0.12, 0.28) * (reduceMotion ? 0.5 : 1);
-    const drift = rand(-0.12, 0.12);
-
-    if (side === 0) {
-      x = rand(0, W);
-      y = -margin - rand(0, 40);
-      vx = drift;
-      vy = speed;
-    } else if (side === 1) {
-      x = W + margin + rand(0, 40);
-      y = rand(0, H);
-      vx = -speed;
-      vy = drift;
-    } else if (side === 2) {
-      x = rand(0, W);
-      y = H + margin + rand(0, 40);
-      vx = drift;
-      vy = -speed;
-    } else {
-      x = -margin - rand(0, 40);
-      y = rand(0, H);
-      vx = speed;
-      vy = drift;
+    const edge = Math.floor(rand(0,4));
+    const speed = rand(0.10,0.24) * (reduceMotion?0.5:1);
+    let x,y,vx,vy;
+    if (edge===0){       // 下から上へ
+      x = rand(0,W); y = H+30;
+      vx = rand(-0.06,0.06); vy = -speed;
+    } else if (edge===1){ // 上から下へ
+      x = rand(0,W); y = -30;
+      vx = rand(-0.06,0.06); vy = speed;
+    } else if (edge===2){ // 左から右へ
+      x = -30; y = rand(0,H);
+      vx = speed; vy = rand(-0.06,0.06);
+    } else {               // 右から左へ
+      x = W+30; y = rand(0,H);
+      vx = -speed; vy = rand(-0.06,0.06);
     }
-
     entities.push(makeEntity(pick(WORDS), x, y, 0, vx, vy));
   }
 
@@ -191,12 +175,12 @@
       default: text = a + "、" + b;
     }
     if (Array.from(text).length > 16){
-      text = a + b;
+      text = a + b; 
     }
     return text;
   }
 
-  /* ---------- 音 ---------- */
+  /* ---------- 音（中性的・女性的な声への絞り込み） ---------- */
   let audioEnabled = false;
   let voices = [];
   function loadVoices(){ voices = speechSynthesis.getVoices ? speechSynthesis.getVoices() : []; }
@@ -206,14 +190,16 @@
   }
   function sing(text){
     if (!audioEnabled || !('speechSynthesis' in window)) return;
-    if (speechSynthesis.speaking) return;
+    if (speechSynthesis.speaking) return; 
     try{
       const u = new SpeechSynthesisUtterance(text);
       const jaVoices = voices.filter(v => /ja/i.test(v.lang));
       const femaleOrAndrogynous = jaVoices.filter(v => !/Ichiro|Otoya|Keita|Osamu|Rokuro/i.test(v.name));
       const v = femaleOrAndrogynous.length ? pick(femaleOrAndrogynous) : (jaVoices.length ? pick(jaVoices) : null);
+      
       if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'ja-JP'; }
-      u.pitch = rand(1.3, 1.7);
+      
+      u.pitch = rand(1.3, 1.7); 
       u.rate = rand(0.72, 1.02);
       u.volume = rand(0.35, 0.6);
       speechSynthesis.speak(u);
@@ -222,15 +208,17 @@
 
   /* ---------- 描画 ---------- */
   function drawWord(e){
+    // 文字数が長い場合は少しフォントを小さくして調整
     const maxFontSize = clamp(e.r*0.4, 12, 24);
     const fontSize = Array.from(e.text).length > 8 ? maxFontSize * 0.8 : maxFontSize;
-
+    
     ctx.save();
     ctx.globalAlpha = e.alpha;
-    ctx.fillStyle = '#2a2a28';
+    ctx.fillStyle = '#2a2a28'; 
     ctx.font = `${fontSize}px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    
     ctx.shadowColor = 'rgba(251,250,246,0.8)';
     ctx.shadowBlur = 4;
 
@@ -239,17 +227,13 @@
     const totalH = chars.length*lineH;
     let y0 = e.y - totalH/2 + lineH/2;
     chars.forEach((ch,i)=>{
-      const cy = y0 + i * lineH;
+      // 「、」「。」は横書き用グリフの墨が字面の左下に寄っているため、
+      // そのまま縦に積むと列全体から見て左にはみ出して見える。
+      // 縦組みの慣習（右肩に寄せる）に近づくよう座標を補正する。
       if (ch === '、' || ch === '。'){
-        // 横書きグリフの墨が左下に寄っているため、
-        // 基準点を右上側に取り直して置く
-        ctx.save();
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(ch, e.x + fontSize * 0.12, cy - fontSize * 0.72);
-        ctx.restore();
+        ctx.fillText(ch, e.x + fontSize*0.30, y0+i*lineH - fontSize*0.28);
       } else {
-        ctx.fillText(ch, e.x, cy);
+        ctx.fillText(ch, e.x, y0+i*lineH);
       }
     });
     ctx.restore();
@@ -268,33 +252,34 @@
     const R = 130;
     for (let i=0;i<entities.length;i++){
       const e = entities[i];
-      if (e.consumed || e.collapsing) continue;
+      if (e.consumed || e.popping) continue;
       let neighbors = 0;
       for (let j=0;j<entities.length;j++){
         if (i===j) continue;
         const o = entities[j];
-        if (o.consumed || o.collapsing) continue;
+        if (o.consumed || o.popping) continue;
         const dx=e.x-o.x, dy=e.y-o.y;
         if (dx*dx+dy*dy < R*R) neighbors++;
       }
       const age = now - e.born;
       if (neighbors===0 && age>4000){
-        e.life = Math.min(e.life, age+1400);
+        e.life = Math.min(e.life, age+1400); 
       } else if (neighbors>=6){
-        e.life = Math.min(e.life, age+1100);
+        e.life = Math.min(e.life, age+1100); 
       } else if (neighbors>=1 && neighbors<=4){
-        e.life += 260;
+        e.life += 260; 
       }
     }
   }
 
+  // 自発的な変容（新しい機能）
   function applyMutations(now){
     for (let i=0;i<entities.length;i++){
       const e = entities[i];
-      if (e.consumed || e.collapsing || Array.from(e.text).length > 12) continue;
-
+      if (e.consumed || e.popping || Array.from(e.text).length > 12) continue;
+      
       const age = now - e.born;
-      if (age > 2000 && Math.random() < 0.05) {
+      if (age > 2000 && Math.random() < 0.05) { // 稀に自発的に変容する
         let r = Math.random();
         if (r < 0.4) {
           e.text = pick(PREFIXES) + e.text;
@@ -303,55 +288,65 @@
         } else {
           e.text = e.text + "、あるいは" + pick(WORDS);
         }
-        e.r = 20 + e.text.length*3.5 + e.fusions*4;
-        e.life += 3000;
-        sing(e.text);
+        
+        e.r = 20 + e.text.length*3.5 + e.fusions*4; // 半径を再計算
+        e.life += 3000; // 変異すると寿命が延びる
+        sing(e.text); // 声に出す
+        
+        // 変容の証として小さな破片を散らす
         for(let j=0; j<3; j++) {
-          spawnSparks({text: e.text.charAt(j%e.text.length), x:e.x, y:e.y, hue:e.hue}, true);
+           spawnSparks({text: e.text.charAt(j%e.text.length), x:e.x, y:e.y, hue:e.hue}, true);
         }
       }
     }
   }
 
+  // 衝突時の多様な相互作用
   function applyInteractions(now){
     for (let i=0;i<entities.length;i++){
       const a = entities[i];
-      if (a.consumed || a.collapsing) continue;
-      if (now - a.lastInteraction < 2000) continue;
+      if (a.consumed || a.popping) continue;
+      if (now - a.lastInteraction < 2000) continue; // クールダウン中
 
       for (let j=i+1;j<entities.length;j++){
         const b = entities[j];
-        if (b.consumed || b.collapsing) continue;
+        if (b.consumed || b.popping) continue;
         if (now - b.lastInteraction < 2000) continue;
 
         const dx=a.x-b.x, dy=a.y-b.y;
         const dist = Math.sqrt(dx*dx+dy*dy);
-
+        
         if (dist < (a.r+b.r)*0.6){
           const randAction = Math.random();
-
+          
           if (randAction < 0.3) {
-            a.lastInteraction = now;
+            // 【パターン1：すれ違い】何もしない。影響を受けずに通り過ぎる。
+            a.lastInteraction = now; 
             b.lastInteraction = now;
-
+            
           } else if (randAction < 0.65) {
+            // 【パターン2：相互干渉】互いの構造を取り込み合い、それぞれが変質して生き残る
             if (a.text.length < 14 && b.text.length < 14) {
               const aChar = Array.from(a.text)[0];
               const bChar = Array.from(b.text)[0];
               a.text = a.text + "の" + bChar;
               b.text = aChar + "と" + b.text;
-              a.lastInteraction = now;
+              
+              a.lastInteraction = now; 
               b.lastInteraction = now;
               a.r += 5; b.r += 5;
+              
               sing(a.text);
               spawnSparks({text: a.text.charAt(0), x:a.x, y:a.y, hue:a.hue}, true);
             }
-
+            
           } else {
+            // 【パターン3：統合】2つが消滅し、新たな1つが生まれる（従来通り）
             if (a.fusions < 6 && b.fusions < 6) {
               const text = combine(a.text, b.text);
               if (Array.from(text).length <= 16 && entities.length < MAX_POP+4){
                 a.consumed = true; b.consumed = true;
+                // 生まれる子は、親たちの漂う方向を引き継ぐ（急に上向きへ切り替わらないように）
                 const cvx = (a.vx+b.vx)/2;
                 const cvy = (a.vy+b.vy)/2;
                 const child = makeEntity(text, (a.x+b.x)/2, (a.y+b.y)/2, Math.max(a.fusions,b.fusions)+1, cvx, cvy);
@@ -362,77 +357,24 @@
               }
             }
           }
-          break;
+          break; // 1フレームで1回の干渉のみ
         }
       }
     }
   }
 
-  /* ---------- 崩壊：文字を剥がして拡散 ---------- */
-  function beginCollapse(e, now){
-    e.collapsing = true;
-    e.collapseStart = now;
-    const chars = Array.from(e.text);
-    const len = Math.max(1, chars.length);
-    const base = reduceMotion ? 280 : 160;
-    e.peelInterval = base + rand(40, 220) + e.fusions * 55 + len * 18;
-    e.collapseDuration = e.peelInterval * len * rand(1.1, 1.8) + rand(400, 1200);
-    e.nextPeel = now + rand(60, e.peelInterval * 0.5);
-    e.vx *= 0.7;
-    e.vy *= 0.7;
-  }
-
-  function peelCharacter(e, now){
-    const chars = Array.from(e.text);
-    if (chars.length === 0) return;
-
-    let idx;
-    if (chars.length <= 2 || Math.random() < 0.75){
-      idx = Math.random() < 0.5 ? 0 : chars.length - 1;
-    } else {
-      idx = 1 + ((Math.random() * (chars.length - 2)) | 0);
-    }
-    const ch = chars.splice(idx, 1)[0];
-    e.text = chars.join('');
-    e.r = Math.max(12, 20 + e.text.length*3.5 + e.fusions*4);
-
-    const ang = rand(0, Math.PI*2);
-    const speed = rand(0.08, 0.28);
-    const ox = e.x + rand(-6, 6);
-    const oy = e.y + rand(-6, 6);
-
-    sparks.push({
-      ch, x: ox, y: oy,
-      vx: Math.cos(ang)*speed + e.vx*0.3,
-      vy: Math.sin(ang)*speed + e.vy*0.3 - 0.01,
-      born: now,
-      life: rand(2200, 4800) + e.fusions*200,
-      hue: e.hue
-    });
-
-    if (ch !== '、' && ch !== '。' && Math.random() < 0.38 && entities.length < MAX_POP + 10){
-      const frag = makeEntity(ch, ox, oy, 0,
-        Math.cos(ang)*rand(0.15, 0.45),
-        Math.sin(ang)*rand(0.15, 0.45) - rand(0.02, 0.08)
-      );
-      frag.life = rand(2800, 7000) + e.fusions*400;
-      frag.born = now;
-      entities.push(frag);
-    }
-
-    e.nextPeel = now + e.peelInterval * rand(0.55, 1.25);
-  }
-
+  /* ---------- 寿命が尽きた言葉の霧散 ---------- */
+  // 崩れるように文字がバラバラになり、ゆっくり霧散して消える
   function dissolveWord(e){
     const now = performance.now();
     const chars = Array.from(e.text);
     chars.forEach(ch=>{
       const ang = rand(0, Math.PI*2);
-      const speed = rand(0.04, 0.14);
+      const speed = rand(0.04, 0.14); // 霧のようにゆっくり漂う
       sparks.push({
         ch, x:e.x, y:e.y,
         vx: Math.cos(ang)*speed,
-        vy: Math.sin(ang)*speed - 0.015,
+        vy: Math.sin(ang)*speed - 0.015, // わずかに立ちのぼる
         born: now,
         life: rand(2800, 4600),
         hue: e.hue
@@ -454,7 +396,7 @@
     }
     if (now-lastRuleTick > 550){ lastRuleTick = now; applyLifeRules(now); }
     if (now-lastFusionTick > 300){ lastFusionTick = now; applyInteractions(now); }
-    if (now-lastMutationTick > 1000){ lastMutationTick = now; applyMutations(now); }
+    if (now-lastMutationTick > 1000){ lastMutationTick = now; applyMutations(now); } // 毎秒変異チェック
 
     ctx.fillStyle = 'rgba(251,250,246,0.16)';
     ctx.fillRect(0,0,W,H);
@@ -467,34 +409,20 @@
         entities.splice(i,1);
         continue;
       }
-
-      if (!e.collapsing && age >= e.life){
-        beginCollapse(e, now);
+      if (!e.popping && age >= e.life){
+        e.popping = true; e.popStart = now;
+        dissolveWord(e); // 崩れて霧散する破片を生成
       }
-
-      if (e.collapsing){
-        if (e.text.length > 0 && now >= e.nextPeel){
-          peelCharacter(e, now);
-        }
-
-        const t = (now - e.collapseStart) / Math.max(1, e.collapseDuration);
-        const fade = clamp(1 - t*0.85, 0.12, 0.85);
-        e.alpha = fade * (e.text.length === 0 ? 0 : 1);
-
-        e.x += e.vx*dt*0.08 + Math.sin(now/1500 + e.phase)*0.10;
-        e.y += e.vy*dt*0.08;
-
-        if (e.text.length > 0) drawWord(e);
-
-        if (e.text.length === 0 || t >= 1){
-          if (e.text.length > 0) dissolveWord(e);
-          entities.splice(i,1);
-        }
+      if (e.popping){
+        const t = (now-e.popStart)/750; // ゆっくり時間をかけて消える
+        if (t>=1){ entities.splice(i,1); continue; }
+        e.alpha = (1-t)*0.75;
+        drawWord(e);
         continue;
       }
 
-      e.x += e.vx*dt*0.10 + Math.sin(now/1500 + e.phase)*0.12;
-      e.y += e.vy*dt*0.10;
+      e.x += e.vx*dt*0.06 + Math.sin(now/1500 + e.phase)*0.12;
+      e.y += e.vy*dt*0.06;
 
       const fadeIn = clamp(age/700, 0, 1);
       const fadeOut = clamp((e.life-age)/1500, 0, 1);
@@ -507,25 +435,23 @@
       drawWord(e);
     }
 
+    // 分裂した言葉の破片
     for (let i=sparks.length-1;i>=0;i--){
       const s = sparks[i];
       const age = now - s.born;
       if (age >= s.life){ sparks.splice(i,1); continue; }
       s.x += s.vx*dt*0.05;
       s.y += s.vy*dt*0.05;
-      s.vx *= 0.98; s.vy = s.vy*0.98 - 0.001;
-
+      s.vx *= 0.98; s.vy = s.vy*0.98 - 0.001; 
+      
       ctx.save();
       ctx.globalAlpha = clamp(1 - (age / s.life), 0, 1) * 0.85;
       ctx.fillStyle = `hsla(${s.hue},30%,40%,1)`;
       ctx.font = '14px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
       if (s.ch === '、' || s.ch === '。'){
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(s.ch, s.x + 2, s.y - 11);
+        ctx.fillText(s.ch, s.x + 4.2, s.y - 3.9);
       } else {
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
         ctx.fillText(s.ch, s.x, s.y);
       }
       ctx.restore();
@@ -536,11 +462,11 @@
   }
 
   /* ---------- 接触と増殖 ---------- */
-  const PROLIFERATE_CHANCE = 0.85;
+  const PROLIFERATE_CHANCE = 0.85; 
 
   function splitWord(text){
     const chars = Array.from(text);
-    if (chars.length <= 1) return [text, text];
+    if (chars.length <= 1) return [text, text]; 
     const parts = [];
     let i = 0;
     while (i < chars.length){
@@ -551,6 +477,7 @@
     return parts;
   }
 
+  // smallSpark: 変異時などの小さなエフェクト用フラグ
   function spawnSparks(e, smallSpark = false){
     const now = performance.now();
     const chars = Array.from(e.text || "　");
@@ -561,30 +488,26 @@
       sparks.push({
         ch, x:e.x, y:e.y,
         vx:Math.cos(ang)*speed, vy:Math.sin(ang)*speed,
-        born:now,
-        life:lifeTime,
+        born:now, 
+        life:lifeTime, 
         hue:e.hue || rand(0,360)
       });
     });
   }
 
   function scatterWord(e){
-    if (e.collapsing) return;
-    const now = performance.now();
-    beginCollapse(e, now);
-    e.peelInterval *= 0.45;
-    e.collapseDuration *= 0.55;
-    e.nextPeel = now;
-
+    e.consumed = true; 
+    spawnSparks(e);
+    
     if (Math.random() < PROLIFERATE_CHANCE){
-      const frags = splitWord(e.text).slice(0,5);
+      const frags = splitWord(e.text).slice(0,5); 
       frags.forEach(frag=>{
         if (entities.length >= MAX_POP+15) return;
         const ang = rand(0,Math.PI*2);
         const child = makeEntity(frag, e.x, e.y, Math.max(0, e.fusions-1));
         child.vx = Math.cos(ang)*rand(0.2,0.6);
         child.vy = -rand(0.05,0.15);
-        child.life = rand(15000, 22000);
+        child.life = rand(15000, 22000); 
         entities.push(child);
         fusedCount++;
       });
@@ -599,10 +522,10 @@
     const y = ev.clientY - rect.top;
     for (let i=entities.length-1;i>=0;i--){
       const e = entities[i];
-      if (e.consumed || e.collapsing) continue;
+      if (e.consumed || e.popping) continue;
       const dx=x-e.x, dy=y-e.y;
-      if (dx*dx+dy*dy <= (e.r*1.2)*(e.r*1.2)){
-        scatterWord(e); break;
+      if (dx*dx+dy*dy <= (e.r*1.2)*(e.r*1.2)){ 
+        scatterWord(e); break; 
       }
     }
   }
@@ -624,7 +547,7 @@
     running = true;
     lastFrame = performance.now();
     lastSpawnTick = lastFrame; lastRuleTick = lastFrame; lastFusionTick = lastFrame; lastMutationTick = lastFrame;
-    for (let i=0;i<8;i++) spawnPrimordial();
+    for (let i=0;i<8;i++) spawnPrimordial(); 
     requestAnimationFrame(frame);
 
     const touchHint = document.getElementById('touchHint');
