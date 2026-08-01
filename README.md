@@ -72,17 +72,17 @@
 
 <div id="overlay">
   <div class="poem">
-    <span>白い余白に、</span>
-    <span>言葉が浮かぶ。</span>
-    <span>偶然と必然が、</span>
-    <span>束の間の詩を紡ぐ。</span>
+    <span>白い余白に</span>
+    <span>言葉が浮かぶ</span>
+    <span>偶然と必然が</span>
+    <span>束の間の詩を紡ぐ</span>
   </div>
-  <div class="hint">触れて、はじめる</div>
+  <div class="hint">触れてはじめる</div>
 </div>
 
 <div id="hud">世代 <span id="gen">0</span> ・ <span id="pop">0</span>語</div>
 <button id="muteBtn" aria-label="音を切り替える">♪</button>
-<div id="touchHint">言葉に触れると、増殖する</div>
+<div id="touchHint">言葉に触れると増殖する</div>
 
 <script>
 (function(){
@@ -98,7 +98,7 @@
   // 自発的な変容に使う修飾語
   const PREFIXES = ["透明な","残酷な","不在の","静かな","構造としての","崩壊する","記述された"];
   const SUFFIXES = ["をし続ける私","の彼方","を反復する","と他者","の限界","の残響","をまなざす"];
-  const CONNECTORS = ["の","と","へ","より","さえ","なす","たる","なる","は","、"];
+  const CONNECTORS = ["の","と","へ","より","さえ","なす","たる","なる","は",""];
 
   const rand = (a,b)=>a+Math.random()*(b-a);
   const pick = (arr)=>arr[(Math.random()*arr.length)|0];
@@ -172,7 +172,7 @@
       case 3: text = b + a; break;
       case 4: text = a + "へ" + b; break;
       case 5: text = a + pick(CONNECTORS) + b; break;
-      default: text = a + "、" + b;
+      default: text = a + "" + b;
     }
     if (Array.from(text).length > 16){
       text = a + b; 
@@ -227,10 +227,10 @@
     const totalH = chars.length*lineH;
     let y0 = e.y - totalH/2 + lineH/2;
     chars.forEach((ch,i)=>{
-      // 「、」「。」は横書き用グリフの墨が字面の左下に寄っているため、
-      // そのまま縦に積むと列全体から見て左にはみ出して見える。
-      // 縦組みの慣習（右肩に寄せる）に近づくよう座標を補正する。
-      if (ch === '、' || ch === '。'){
+      // 「」「」は横書き用グリフの墨が字面の左下に寄っているため
+      // そのまま縦に積むと列全体から見て左にはみ出して見える
+      // 縦組みの慣習（右肩に寄せる）に近づくよう座標を補正する
+      if (ch === '' || ch === ''){
         ctx.fillText(ch, e.x + fontSize*0.30, y0+i*lineH - fontSize*0.28);
       } else {
         ctx.fillText(ch, e.x, y0+i*lineH);
@@ -286,7 +286,7 @@
         } else if (r < 0.8) {
           e.text = e.text + pick(SUFFIXES);
         } else {
-          e.text = e.text + "、あるいは" + pick(WORDS);
+          e.text = e.text + "あるいは" + pick(WORDS);
         }
         
         e.r = 20 + e.text.length*3.5 + e.fusions*4; // 半径を再計算
@@ -320,12 +320,12 @@
           const randAction = Math.random();
           
           if (randAction < 0.3) {
-            // 【パターン1：すれ違い】何もしない。影響を受けずに通り過ぎる。
+            // 【パターン1：すれ違い】何もしない影響を受けずに通り過ぎる
             a.lastInteraction = now; 
             b.lastInteraction = now;
             
           } else if (randAction < 0.65) {
-            // 【パターン2：相互干渉】互いの構造を取り込み合い、それぞれが変質して生き残る
+            // 【パターン2：相互干渉】互いの構造を取り込み合いそれぞれが変質して生き残る
             if (a.text.length < 14 && b.text.length < 14) {
               const aChar = Array.from(a.text)[0];
               const bChar = Array.from(b.text)[0];
@@ -341,12 +341,12 @@
             }
             
           } else {
-            // 【パターン3：統合】2つが消滅し、新たな1つが生まれる（従来通り）
+            // 【パターン3：統合】2つが消滅し新たな1つが生まれる（従来通り）
             if (a.fusions < 6 && b.fusions < 6) {
               const text = combine(a.text, b.text);
               if (Array.from(text).length <= 16 && entities.length < MAX_POP+4){
                 a.consumed = true; b.consumed = true;
-                // 生まれる子は、親たちの漂う方向を引き継ぐ（急に上向きへ切り替わらないように）
+                // 生まれる子は親たちの漂う方向を引き継ぐ（急に上向きへ切り替わらないように）
                 const cvx = (a.vx+b.vx)/2;
                 const cvy = (a.vy+b.vy)/2;
                 const child = makeEntity(text, (a.x+b.x)/2, (a.y+b.y)/2, Math.max(a.fusions,b.fusions)+1, cvx, cvy);
@@ -364,7 +364,7 @@
   }
 
   /* ---------- 寿命が尽きた言葉の霧散 ---------- */
-  // 崩れるように文字がバラバラになり、ゆっくり霧散して消える
+  // 崩れるように文字がバラバラになりゆっくり霧散して消える
   function dissolveWord(e){
     const now = performance.now();
     const chars = Array.from(e.text);
@@ -449,7 +449,7 @@
       ctx.fillStyle = `hsla(${s.hue},30%,40%,1)`;
       ctx.font = '14px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif';
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      if (s.ch === '、' || s.ch === '。'){
+      if (s.ch === '' || s.ch === ''){
         ctx.fillText(s.ch, s.x + 4.2, s.y - 3.9);
       } else {
         ctx.fillText(s.ch, s.x, s.y);
