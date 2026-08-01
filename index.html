@@ -238,24 +238,56 @@
   }
 
  /* =========================================================
-生態ルール（個体数カウント機能付き 完全版）
-置換対象: classifySize, createTraits, calcRadius, calcLife, calcMaxSpeed
-追加: countBySizeClass, canSpawnSizeForText
+生態ルール 完全統合版（個体数カウントと予約を含む）
+置換対象: classifySize, createTraits, calcRadius, calcLife, calcMaxSpeed, makeEntity
+追加: SIZE_LIMITS, sizeCounts, initSizeCounts, incrementSizeCount, decrementSizeCount,
+      canSpawnSizeForText, tryApplyTextChange, removeEntity
 ========================================================= */
 
-/* ---------- 上限設定（必要ならここを調整） ---------- */
+/* ---------- 上限設定 ---------- */
 const SIZE_LIMITS = {
   large: 1,
-  medium: 1,
-  small: 1,
-  seed: 2
+  medium: 3,
+  small: 5,
+  seed: 6
 };
+
+/* ---------- グローバルカウント管理 ---------- */
+const sizeCounts = { large: 0, medium: 0, small: 0, seed: 0 };
+
+function initSizeCounts(){
+  sizeCounts.large = 0;
+  sizeCounts.medium = 0;
+  sizeCounts.small = 0;
+  sizeCounts.seed = 0;
+  for(const e of entities){
+    if(!e) continue;
+    if(e.consumed || e.collapsing) continue;
+    if(e.traits && e.traits.sizeClass && sizeCounts[e.traits.sizeClass] !== undefined){
+      sizeCounts[e.traits.sizeClass]++;
+    }
+  }
+}
+
+function incrementSizeCount(size){
+  if(sizeCounts[size] === undefined) sizeCounts[size] = 0;
+  sizeCounts[size]++;
+}
+
+function decrementSizeCount(size){
+  if(sizeCounts[size] === undefined) return;
+  sizeCounts[size] = Math.max(0, sizeCounts[size] - 1);
+}
+
+function getSizeCount(size){
+  return sizeCounts[size] || 0;
+}
 
 /* ---------- サイズ分類 ---------- */
 function classifySize(text){
   const len = charLen(text);
 
-  // 二文字でも large になる例外（8%）
+  // 二文字でも large になる例外 8%
   if(len === 2 && chance(0.08)) return "large";
 
   if(len <= 2) return "seed";
@@ -264,21 +296,10 @@ function classifySize(text){
   return "large";
 }
 
-/* ---------- 個体数カウント（現在の生存個体を数える） ---------- */
-function countBySizeClass(size){
-  // entities はグローバル配列で、消費/崩壊中の個体はカウントしない
-  return entities.filter(e =>
-    !e.consumed &&
-    !e.collapsing &&
-    e.traits &&
-    e.traits.sizeClass === size
-  ).length;
-}
-
 /* ---------- 生成可否チェック（テキストから判定） ---------- */
 function canSpawnSizeForText(text){
   const size = classifySize(text);
-  const current = countBySizeClass(size);
+  const current = getSizeCount(size);
   const limit = SIZE_LIMITS[size] ?? Infinity;
   return current < limit;
 }
@@ -299,19 +320,16 @@ function createTraits(text, fusions){
     fertility = rand(1.25, 1.85);
     fragility = rand(1.25, 1.8);
     drift     = rand(1.25, 1.8);
-
   }else if(sizeClass === "small"){
     longevity = rand(0.72, 1.05);
     fertility = rand(1.05, 1.5);
     fragility = rand(1.0, 1.35);
     drift     = rand(1.0, 1.35);
-
   }else if(sizeClass === "medium"){
     longevity = rand(1.05, 1.55);
     fertility = rand(0.78, 1.12);
     fragility = rand(0.72, 1.0);
     drift     = rand(0.7, 1.0);
-
   }else{ // large
     longevity = rand(1.55, 2.45);
     fertility = rand(0.45, 0.8);
@@ -319,10 +337,10 @@ function createTraits(text, fusions){
     drift     = rand(0.38, 0.7);
   }
 
-  // 融合回数による寿命補正（上限を設けて過度な伸長を抑える）
+  // 融合回数による寿命補正
   longevity *= 1 + Math.min(fusions, 8) * 0.12;
 
-  // 例外1: 長命な種子個体（稀）
+  // 例外1: 長命な種子個体
   const immortalSeed = (sizeClass === "seed") && chance(0.075);
   if(immortalSeed){
     longevity *= rand(4.2, 8.5);
@@ -331,7 +349,7 @@ function createTraits(text, fusions){
     rarity    += 3;
   }
 
-  // 例外2: 早逝する巨大個体（稀）
+  // 例外2: 早逝する巨大個体
   const doomedGiant = (sizeClass === "large") && chance(0.10);
   if(doomedGiant){
     longevity *= rand(0.22, 0.48);
@@ -340,7 +358,7 @@ function createTraits(text, fusions){
     rarity    += 2;
   }
 
-  // 例外3: 突然変異（どのサイズにも稀に発生）
+  // 例外3: 突然変異
   const anomaly = chance(0.035);
   if(anomaly){
     longevity *= rand(0.35, 3.6);
@@ -350,7 +368,6 @@ function createTraits(text, fusions){
     rarity    += 1;
   }
 
-  // traits を返す
   return {
     sizeClass,
     longevity,
@@ -364,7 +381,7 @@ function createTraits(text, fusions){
   };
 }
 
-/* ---------- 半径（表示上の存在感） ---------- */
+/* ---------- 半径 ---------- */
 function calcRadius(text, fusions, traits){
   const len = charLen(text);
 
@@ -373,7 +390,7 @@ function calcRadius(text, fusions, traits){
     Math.pow(len, 0.92) * 4.2 +
     Math.min(fusions, 10) * 3.2;
 
-  // 二文字 large の場合は特別に拡大
+  // 二文字 large の巨大化
   if(traits.sizeClass === "large" && len === 2){
     r *= 1.45;
   }
@@ -384,7 +401,7 @@ function calcRadius(text, fusions, traits){
   return clamp(r, 18, 108);
 }
 
-/* ---------- 構造的寿命（ミリ秒） ---------- */
+/* ---------- 寿命 ---------- */
 function calcLife(text, fusions, traits){
   const len = Math.max(1, charLen(text));
 
@@ -399,31 +416,123 @@ function calcLife(text, fusions, traits){
   return structuralLife * traits.longevity * noise;
 }
 
-/* ---------- 最大速度（表示上の漂流速度） ---------- */
+/* ---------- 最大速度 ---------- */
 function calcMaxSpeed(radius, traits){
   const base = clamp(1.45 - radius / 120, 0.28, 1.2);
   return base * traits.drift * (reduceMotion ? 0.45 : 1);
 }
 
-/* =========================================================
-補助: 生成時の安全な呼び出し例（既存の makeEntity を置き換えない場合の利用法）
-========================================================= */
+/* ---------- makeEntity 完全版（生成時に予約） ---------- */
+function makeEntity(text, x, y, fusions = 0, vx, vy, inheritedTraits = null){
+  text = trimText(text, 24);
 
-/*
-使い方（生成関数内）:
+  // traits を先に作りサイズを確定する
+  const traits = inheritedTraits || createTraits(text, fusions);
+  const size = traits.sizeClass;
 
-// 例: spawnPrimordial 内で
-const text = seedText();               // 生成したい語
-if (!canSpawnSizeForText(text)) {
-  // 上限に達しているので生成をスキップする
-} else {
-  const e = makeEntity(text, x, y, 0, vx, vy); // 既存の makeEntity を呼ぶ
-  if (e) entities.push(e); // makeEntity が null を返す可能性がある場合は弾く
+  // 上限チェックと予約
+  const limit = SIZE_LIMITS[size] ?? Infinity;
+  if((sizeCounts[size] || 0) >= limit){
+    return null; // 上限に達しているので生成を拒否
+  }
+  // 予約（生成が成功したらカウントは確定）
+  incrementSizeCount(size);
+
+  // 生成本体
+  const r = calcRadius(text, fusions, traits);
+  const maxSpeed = calcMaxSpeed(r, traits);
+  const angle = rand(0, Math.PI * 2);
+  const fallbackSpeed = rand(0.12, maxSpeed);
+
+  const actualVx = vx !== undefined ? vx : Math.cos(angle) * fallbackSpeed;
+  const actualVy = vy !== undefined ? vy : Math.sin(angle) * fallbackSpeed;
+
+  const e = {
+    text,
+    x,
+    y,
+    r,
+    fusions,
+    traits,
+    vx: actualVx,
+    vy: actualVy,
+    maxSpeed,
+    phase: rand(0, Math.PI * 2),
+    born: performance.now(),
+    life: calcLife(text, fusions, traits),
+    alpha: 0,
+    energy: rand(0.78, 1.25),
+    consumed: false,
+    collapsing: false,
+    collapseStart: 0,
+    collapseDuration: 0,
+    nextPeel: 0,
+    peelInterval: 0,
+    lastInteraction: 0,
+    lastMutation: 0,
+    hitLeft: false,
+    hitRight: false,
+    hitTop: false,
+    hitBottom: false,
+    hue: rand(190, 245)
+  };
+
+  return e;
 }
 
-または、もし makeEntity をこの区分けに合わせて置き換えるなら、
-makeEntity の先頭で canSpawnSizeForText(text) をチェックして null を返す実装にしてください。
-*/
+/* ---------- 安全な削除ユーティリティ ---------- */
+function removeEntityByIndex(idx){
+  const e = entities[idx];
+  if(!e) return;
+  if(e.traits && e.traits.sizeClass) decrementSizeCount(e.traits.sizeClass);
+  entities.splice(idx, 1);
+}
+
+function removeEntity(e){
+  const idx = entities.indexOf(e);
+  if(idx !== -1) removeEntityByIndex(idx);
+}
+
+/* ---------- 変異でサイズが変わる場合の安全な適用 ---------- */
+function tryApplyTextChange(e, newText){
+  newText = trimText(newText, 24);
+  const oldSize = e.traits.sizeClass;
+  const newTraits = createTraits(newText, e.fusions);
+  const newSize = newTraits.sizeClass;
+
+  if(newSize === oldSize){
+    e.text = newText;
+    e.traits = newTraits;
+    recalcEntity(e, 0);
+    return true;
+  }
+
+  // サイズが変わる場合は上限をチェック
+  const limit = SIZE_LIMITS[newSize] ?? Infinity;
+  if((sizeCounts[newSize] || 0) >= limit){
+    // 上限に達しているので変異をキャンセル
+    return false;
+  }
+
+  // 変異を許可：カウントを更新
+  decrementSizeCount(oldSize);
+  incrementSizeCount(newSize);
+
+  e.text = newText;
+  e.traits = newTraits;
+  recalcEntity(e, 0);
+  return true;
+}
+
+/* =========================================================
+注意と導入手順
+1. スクリプト初期化時に initSizeCounts() を呼ぶ
+2. すべての生成箇所で makeEntity を呼び、戻り値をチェックしてから entities.push(e)
+   例: const e = makeEntity(text,x,y,...); if(e) entities.push(e);
+3. 繁殖で親を消費する箇所や寿命で削除する箇所では removeEntity(e) または decrementSizeCount を必ず呼ぶ
+4. applyMutations 内で直接 e.text を書き換える代わりに tryApplyTextChange を使う
+5. spawnFragmentEntity 等で大量生成する場合は makeEntity が null を返すことを前提に処理する
+======================================================== */
 
   /* =========================================================
      Canvas
