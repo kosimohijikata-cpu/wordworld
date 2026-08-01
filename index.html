@@ -238,22 +238,24 @@
   }
 
  /* =========================================================
-生態ルール（完全書き換え版）
+生態ルール（個体数カウント機能付き 完全版）
+置換対象: classifySize, createTraits, calcRadius, calcLife, calcMaxSpeed
+追加: countBySizeClass, canSpawnSizeForText
 ========================================================= */
 
-/*
-sizeClass:
-seed  = 1〜2文字
-small = 3〜5文字
-medium= 6〜10文字
-large = 11文字以上
-ただし、二文字でも 8% の確率で large になりうる「例外個体」が存在する。
-*/
+/* ---------- 上限設定（必要ならここを調整） ---------- */
+const SIZE_LIMITS = {
+  large: 1,
+  medium: 3,
+  small: 5,
+  seed: 6
+};
 
+/* ---------- サイズ分類 ---------- */
 function classifySize(text){
   const len = charLen(text);
 
-  // 二文字でも large レベルになる例外（8%）
+  // 二文字でも large になる例外（8%）
   if(len === 2 && chance(0.08)) return "large";
 
   if(len <= 2) return "seed";
@@ -262,16 +264,26 @@ function classifySize(text){
   return "large";
 }
 
-/*
-createTraits:
-各個体の生態的パラメータを決定する。
-- longevity: 寿命係数
-- fertility: 繁殖力
-- fragility: 壊れやすさ
-- drift: 漂流性（速度係数）
-- rarity: 稀少性（視覚的な輪郭などに反映）
-*/
+/* ---------- 個体数カウント（現在の生存個体を数える） ---------- */
+function countBySizeClass(size){
+  // entities はグローバル配列で、消費/崩壊中の個体はカウントしない
+  return entities.filter(e =>
+    !e.consumed &&
+    !e.collapsing &&
+    e.traits &&
+    e.traits.sizeClass === size
+  ).length;
+}
 
+/* ---------- 生成可否チェック（テキストから判定） ---------- */
+function canSpawnSizeForText(text){
+  const size = classifySize(text);
+  const current = countBySizeClass(size);
+  const limit = SIZE_LIMITS[size] ?? Infinity;
+  return current < limit;
+}
+
+/* ---------- traits の生成 ---------- */
 function createTraits(text, fusions){
   const len = charLen(text);
   const sizeClass = classifySize(text);
@@ -287,16 +299,19 @@ function createTraits(text, fusions){
     fertility = rand(1.25, 1.85);
     fragility = rand(1.25, 1.8);
     drift     = rand(1.25, 1.8);
+
   }else if(sizeClass === "small"){
     longevity = rand(0.72, 1.05);
     fertility = rand(1.05, 1.5);
     fragility = rand(1.0, 1.35);
     drift     = rand(1.0, 1.35);
+
   }else if(sizeClass === "medium"){
     longevity = rand(1.05, 1.55);
     fertility = rand(0.78, 1.12);
     fragility = rand(0.72, 1.0);
     drift     = rand(0.7, 1.0);
+
   }else{ // large
     longevity = rand(1.55, 2.45);
     fertility = rand(0.45, 0.8);
@@ -304,17 +319,11 @@ function createTraits(text, fusions){
     drift     = rand(0.38, 0.7);
   }
 
-  // 融合回数による寿命補正
+  // 融合回数による寿命補正（上限を設けて過度な伸長を抑える）
   longevity *= 1 + Math.min(fusions, 8) * 0.12;
 
-  /*
-  例外1: 小さいのに異様に長命な「種子個体」
-  （二文字 large との詩的な共鳴を保つ）
-  */
-  const immortalSeed =
-    (sizeClass === "seed") &&
-    chance(0.075);
-
+  // 例外1: 長命な種子個体（稀）
+  const immortalSeed = (sizeClass === "seed") && chance(0.075);
   if(immortalSeed){
     longevity *= rand(4.2, 8.5);
     fertility *= rand(0.35, 0.7);
@@ -322,14 +331,8 @@ function createTraits(text, fusions){
     rarity    += 3;
   }
 
-  /*
-  例外2: 大きいのに突然崩壊しやすい「早逝個体」
-  （二文字 large も large として扱われる）
-  */
-  const doomedGiant =
-    (sizeClass === "large") &&
-    chance(0.10);
-
+  // 例外2: 早逝する巨大個体（稀）
+  const doomedGiant = (sizeClass === "large") && chance(0.10);
   if(doomedGiant){
     longevity *= rand(0.22, 0.48);
     fragility *= rand(1.7, 2.7);
@@ -337,11 +340,8 @@ function createTraits(text, fusions){
     rarity    += 2;
   }
 
-  /*
-  例外3: どの大きさにも稀に生まれる突然変異
-  */
+  // 例外3: 突然変異（どのサイズにも稀に発生）
   const anomaly = chance(0.035);
-
   if(anomaly){
     longevity *= rand(0.35, 3.6);
     fertility *= rand(0.5, 1.8);
@@ -350,6 +350,7 @@ function createTraits(text, fusions){
     rarity    += 1;
   }
 
+  // traits を返す
   return {
     sizeClass,
     longevity,
@@ -363,13 +364,7 @@ function createTraits(text, fusions){
   };
 }
 
-/*
-calcRadius:
-表示上の半径（存在感）を決定する。
-基本的には文字数と融合回数に応じて大きくなるが、
-二文字 large の場合は特別に巨大化させる。
-*/
-
+/* ---------- 半径（表示上の存在感） ---------- */
 function calcRadius(text, fusions, traits){
   const len = charLen(text);
 
@@ -378,7 +373,7 @@ function calcRadius(text, fusions, traits){
     Math.pow(len, 0.92) * 4.2 +
     Math.min(fusions, 10) * 3.2;
 
-  // 二文字 large の巨大化
+  // 二文字 large の場合は特別に拡大
   if(traits.sizeClass === "large" && len === 2){
     r *= 1.45;
   }
@@ -389,13 +384,7 @@ function calcRadius(text, fusions, traits){
   return clamp(r, 18, 108);
 }
 
-/*
-calcLife:
-構造的寿命（ミリ秒）を決定する。
-文字数と融合回数に応じて非線形に伸びるが、
-traits.longevity によって例外化される。
-*/
-
+/* ---------- 構造的寿命（ミリ秒） ---------- */
 function calcLife(text, fusions, traits){
   const len = Math.max(1, charLen(text));
 
@@ -410,16 +399,31 @@ function calcLife(text, fusions, traits){
   return structuralLife * traits.longevity * noise;
 }
 
-/*
-calcMaxSpeed:
-大きい言葉ほど遅く、小さい断片ほど速く漂う。
-drift と reduceMotion によって補正される。
-*/
-
+/* ---------- 最大速度（表示上の漂流速度） ---------- */
 function calcMaxSpeed(radius, traits){
   const base = clamp(1.45 - radius / 120, 0.28, 1.2);
   return base * traits.drift * (reduceMotion ? 0.45 : 1);
 }
+
+/* =========================================================
+補助: 生成時の安全な呼び出し例（既存の makeEntity を置き換えない場合の利用法）
+========================================================= */
+
+/*
+使い方（生成関数内）:
+
+// 例: spawnPrimordial 内で
+const text = seedText();               // 生成したい語
+if (!canSpawnSizeForText(text)) {
+  // 上限に達しているので生成をスキップする
+} else {
+  const e = makeEntity(text, x, y, 0, vx, vy); // 既存の makeEntity を呼ぶ
+  if (e) entities.push(e); // makeEntity が null を返す可能性がある場合は弾く
+}
+
+または、もし makeEntity をこの区分けに合わせて置き換えるなら、
+makeEntity の先頭で canSpawnSizeForText(text) をチェックして null を返す実装にしてください。
+*/
 
   /* =========================================================
      Canvas
