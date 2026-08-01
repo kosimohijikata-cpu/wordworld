@@ -95,6 +95,7 @@
     "構造","鏡像","器官","差異","閾","無意識","現存在","他者","言語","記述","祈り"
   ];
   
+  // 自発的な変容に使う修飾語
   const PREFIXES = ["透明な","残酷な","不在の","静かな","構造としての","崩壊する","記述された"];
   const SUFFIXES = ["をし続ける私","の彼方","を反復する","と他者","の限界","の残響","をまなざす"];
   const CONNECTORS = ["の","と","へ","より","さえ","なす","たる","なる","は","、"];
@@ -118,67 +119,17 @@
   window.addEventListener('resize', resize);
   resize();
 
-  /* ---------- 機械的・かすれたノイズ音響エンジン ---------- */
-  let audioCtx = null;
-  let audioEnabled = false;
-
-  function initAudio(){
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-  }
-
-  // 声の代わりに「機械的でかすれたノイズ（ホワイトノイズ＋帯域フィルター）」を鳴らす
-  function playMechanicalHiss(duration = 0.35, freq = 300) {
-    if (!audioEnabled) return;
-    initAudio();
-    if (!audioCtx) return;
-
-    try {
-      const bufferSize = audioCtx.sampleRate * duration;
-      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const output = buffer.getChannelData(0);
-      
-      // ざらついたホワイトノイズを生成
-      for (let i = 0; i < bufferSize; i++) {
-        output[i] = Math.random() * 2 - 1;
-      }
-
-      const whiteNoise = audioCtx.createBufferSource();
-      whiteNoise.buffer = buffer;
-
-      // バンドパスフィルターで「かすれた無線や機械の息吹」のようなこもった音にする
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(freq + rand(-80, 80), audioCtx.currentTime);
-      filter.Q.setValueAtTime(4.0, audioCtx.currentTime);
-
-      const gain = audioCtx.createGain();
-      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-
-      whiteNoise.connect(filter);
-      filter.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      whiteNoise.start();
-    } catch(e) {}
-  }
-
   /* ---------- 語=個体 ---------- */
   let entities = [];
   let sparks = []; 
   let fusedCount = 0; 
 
-  function makeEntity(text, x, y, fusions){
+  function makeEntity(text, x, y, fusions, vx, vy){
     const r = 20 + text.length*3.5 + fusions*4;
     return {
       text, x, y, r, fusions,
-      vx: rand(-0.06,0.06),
-      vy: -(rand(0.10,0.24) + fusions*0.015) * (reduceMotion?0.5:1),
+      vx: (vx!==undefined) ? vx : rand(-0.06,0.06),
+      vy: (vy!==undefined) ? vy : -(rand(0.10,0.24) + fusions*0.015) * (reduceMotion?0.5:1),
       hue: rand(0,360),
       phase: rand(0, Math.PI*2),
       born: performance.now(),
@@ -186,12 +137,29 @@
       alpha: 0,
       consumed: false, 
       popping: false, popStart: 0,
-      lastInteraction: 0
+      lastInteraction: 0 // 連続干渉を防ぐためのクールダウンタイマー
     };
   }
 
+  // 複数の方向から言葉が漂い込んでくる（下・上・左・右）
   function spawnPrimordial(){
-    entities.push(makeEntity(pick(WORDS), rand(0,W), H+30, 0));
+    const edge = Math.floor(rand(0,4));
+    const speed = rand(0.10,0.24) * (reduceMotion?0.5:1);
+    let x,y,vx,vy;
+    if (edge===0){       // 下から上へ
+      x = rand(0,W); y = H+30;
+      vx = rand(-0.06,0.06); vy = -speed;
+    } else if (edge===1){ // 上から下へ
+      x = rand(0,W); y = -30;
+      vx = rand(-0.06,0.06); vy = speed;
+    } else if (edge===2){ // 左から右へ
+      x = -30; y = rand(0,H);
+      vx = speed; vy = rand(-0.06,0.06);
+    } else {               // 右から左へ
+      x = W+30; y = rand(0,H);
+      vx = -speed; vy = rand(-0.06,0.06);
+    }
+    entities.push(makeEntity(pick(WORDS), x, y, 0, vx, vy));
   }
 
   function combine(a, b){
@@ -212,8 +180,35 @@
     return text;
   }
 
+  /* ---------- 音（中性的・女性的な声への絞り込み） ---------- */
+  let audioEnabled = false;
+  let voices = [];
+  function loadVoices(){ voices = speechSynthesis.getVoices ? speechSynthesis.getVoices() : []; }
+  if ('speechSynthesis' in window){
+    loadVoices();
+    speechSynthesis.onvoiceschanged = loadVoices;
+  }
+  function sing(text){
+    if (!audioEnabled || !('speechSynthesis' in window)) return;
+    if (speechSynthesis.speaking) return; 
+    try{
+      const u = new SpeechSynthesisUtterance(text);
+      const jaVoices = voices.filter(v => /ja/i.test(v.lang));
+      const femaleOrAndrogynous = jaVoices.filter(v => !/Ichiro|Otoya|Keita|Osamu|Rokuro/i.test(v.name));
+      const v = femaleOrAndrogynous.length ? pick(femaleOrAndrogynous) : (jaVoices.length ? pick(jaVoices) : null);
+      
+      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'ja-JP'; }
+      
+      u.pitch = rand(1.3, 1.7); 
+      u.rate = rand(0.72, 1.02);
+      u.volume = rand(0.35, 0.6);
+      speechSynthesis.speak(u);
+    }catch(e){ }
+  }
+
   /* ---------- 描画 ---------- */
   function drawWord(e){
+    // 文字数が長い場合は少しフォントを小さくして調整
     const maxFontSize = clamp(e.r*0.4, 12, 24);
     const fontSize = Array.from(e.text).length > 8 ? maxFontSize * 0.8 : maxFontSize;
     
@@ -231,7 +226,16 @@
     const lineH = fontSize*1.12;
     const totalH = chars.length*lineH;
     let y0 = e.y - totalH/2 + lineH/2;
-    chars.forEach((ch,i)=> ctx.fillText(ch, e.x, y0+i*lineH));
+    chars.forEach((ch,i)=>{
+      // 「、」「。」は横書き用グリフの墨が字面の左下に寄っているため、
+      // そのまま縦に積むと列全体から見て左にはみ出して見える。
+      // 縦組みの慣習（右肩に寄せる）に近づくよう座標を補正する。
+      if (ch === '、' || ch === '。'){
+        ctx.fillText(ch, e.x + fontSize*0.30, y0+i*lineH - fontSize*0.28);
+      } else {
+        ctx.fillText(ch, e.x, y0+i*lineH);
+      }
+    });
     ctx.restore();
   }
 
@@ -268,13 +272,14 @@
     }
   }
 
+  // 自発的な変容（新しい機能）
   function applyMutations(now){
     for (let i=0;i<entities.length;i++){
       const e = entities[i];
       if (e.consumed || e.popping || Array.from(e.text).length > 12) continue;
       
       const age = now - e.born;
-      if (age > 2000 && Math.random() < 0.05) { 
+      if (age > 2000 && Math.random() < 0.05) { // 稀に自発的に変容する
         let r = Math.random();
         if (r < 0.4) {
           e.text = pick(PREFIXES) + e.text;
@@ -284,10 +289,11 @@
           e.text = e.text + "、あるいは" + pick(WORDS);
         }
         
-        e.r = 20 + e.text.length*3.5 + e.fusions*4; 
-        e.life += 3000; 
-        playMechanicalHiss(0.4, 450); // 変異時にかすれたノイズを鳴らす
+        e.r = 20 + e.text.length*3.5 + e.fusions*4; // 半径を再計算
+        e.life += 3000; // 変異すると寿命が延びる
+        sing(e.text); // 声に出す
         
+        // 変容の証として小さな破片を散らす
         for(let j=0; j<3; j++) {
            spawnSparks({text: e.text.charAt(j%e.text.length), x:e.x, y:e.y, hue:e.hue}, true);
         }
@@ -295,11 +301,12 @@
     }
   }
 
+  // 衝突時の多様な相互作用
   function applyInteractions(now){
     for (let i=0;i<entities.length;i++){
       const a = entities[i];
       if (a.consumed || a.popping) continue;
-      if (now - a.lastInteraction < 2000) continue; 
+      if (now - a.lastInteraction < 2000) continue; // クールダウン中
 
       for (let j=i+1;j<entities.length;j++){
         const b = entities[j];
@@ -313,10 +320,12 @@
           const randAction = Math.random();
           
           if (randAction < 0.3) {
+            // 【パターン1：すれ違い】何もしない。影響を受けずに通り過ぎる。
             a.lastInteraction = now; 
             b.lastInteraction = now;
             
           } else if (randAction < 0.65) {
+            // 【パターン2：相互干渉】互いの構造を取り込み合い、それぞれが変質して生き残る
             if (a.text.length < 14 && b.text.length < 14) {
               const aChar = Array.from(a.text)[0];
               const bChar = Array.from(b.text)[0];
@@ -327,27 +336,50 @@
               b.lastInteraction = now;
               a.r += 5; b.r += 5;
               
-              playMechanicalHiss(0.25, 350);
-              spawnSparks({text: a.text.charAt(0), x:e.x, y:e.y, hue:a.hue}, true);
+              sing(a.text);
+              spawnSparks({text: a.text.charAt(0), x:a.x, y:a.y, hue:a.hue}, true);
             }
             
           } else {
+            // 【パターン3：統合】2つが消滅し、新たな1つが生まれる（従来通り）
             if (a.fusions < 6 && b.fusions < 6) {
               const text = combine(a.text, b.text);
               if (Array.from(text).length <= 16 && entities.length < MAX_POP+4){
                 a.consumed = true; b.consumed = true;
-                const child = makeEntity(text, (a.x+b.x)/2, (a.y+b.y)/2, Math.max(a.fusions,b.fusions)+1);
+                // 生まれる子は、親たちの漂う方向を引き継ぐ（急に上向きへ切り替わらないように）
+                const cvx = (a.vx+b.vx)/2;
+                const cvy = (a.vy+b.vy)/2;
+                const child = makeEntity(text, (a.x+b.x)/2, (a.y+b.y)/2, Math.max(a.fusions,b.fusions)+1, cvx, cvy);
                 entities.push(child);
                 fusedCount++;
                 genEl.textContent = fusedCount;
-                playMechanicalHiss(0.3, 250); // 統合時に低いノイズ音
+                sing(text);
               }
             }
           }
-          break; 
+          break; // 1フレームで1回の干渉のみ
         }
       }
     }
+  }
+
+  /* ---------- 寿命が尽きた言葉の霧散 ---------- */
+  // 崩れるように文字がバラバラになり、ゆっくり霧散して消える
+  function dissolveWord(e){
+    const now = performance.now();
+    const chars = Array.from(e.text);
+    chars.forEach(ch=>{
+      const ang = rand(0, Math.PI*2);
+      const speed = rand(0.04, 0.14); // 霧のようにゆっくり漂う
+      sparks.push({
+        ch, x:e.x, y:e.y,
+        vx: Math.cos(ang)*speed,
+        vy: Math.sin(ang)*speed - 0.015, // わずかに立ちのぼる
+        born: now,
+        life: rand(2800, 4600),
+        hue: e.hue
+      });
+    });
   }
 
   /* ---------- メインループ ---------- */
@@ -364,7 +396,7 @@
     }
     if (now-lastRuleTick > 550){ lastRuleTick = now; applyLifeRules(now); }
     if (now-lastFusionTick > 300){ lastFusionTick = now; applyInteractions(now); }
-    if (now-lastMutationTick > 1000){ lastMutationTick = now; applyMutations(now); }
+    if (now-lastMutationTick > 1000){ lastMutationTick = now; applyMutations(now); } // 毎秒変異チェック
 
     ctx.fillStyle = 'rgba(251,250,246,0.16)';
     ctx.fillRect(0,0,W,H);
@@ -379,12 +411,12 @@
       }
       if (!e.popping && age >= e.life){
         e.popping = true; e.popStart = now;
+        dissolveWord(e); // 崩れて霧散する破片を生成
       }
       if (e.popping){
-        const t = (now-e.popStart)/260;
+        const t = (now-e.popStart)/750; // ゆっくり時間をかけて消える
         if (t>=1){ entities.splice(i,1); continue; }
-        e.alpha = (1-t)*0.8;
-        e.r = e.r*(1+t*0.015);
+        e.alpha = (1-t)*0.75;
         drawWord(e);
         continue;
       }
@@ -396,13 +428,14 @@
       const fadeOut = clamp((e.life-age)/1500, 0, 1);
       e.alpha = Math.min(fadeIn, fadeOut) * 0.85;
 
-      if (e.y < -e.r-40 || e.x < -e.r-60 || e.x > W+e.r+60){
+      if (e.y < -e.r-40 || e.y > H+e.r+40 || e.x < -e.r-60 || e.x > W+e.r+60){
         entities.splice(i,1); continue;
       }
 
       drawWord(e);
     }
 
+    // 分裂した言葉の破片
     for (let i=sparks.length-1;i>=0;i--){
       const s = sparks[i];
       const age = now - s.born;
@@ -416,7 +449,11 @@
       ctx.fillStyle = `hsla(${s.hue},30%,40%,1)`;
       ctx.font = '14px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif';
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(s.ch, s.x, s.y);
+      if (s.ch === '、' || s.ch === '。'){
+        ctx.fillText(s.ch, s.x + 4.2, s.y - 3.9);
+      } else {
+        ctx.fillText(s.ch, s.x, s.y);
+      }
       ctx.restore();
     }
 
@@ -424,6 +461,7 @@
     requestAnimationFrame(frame);
   }
 
+  /* ---------- 接触と増殖 ---------- */
   const PROLIFERATE_CHANCE = 0.85; 
 
   function splitWord(text){
@@ -439,9 +477,10 @@
     return parts;
   }
 
+  // smallSpark: 変異時などの小さなエフェクト用フラグ
   function spawnSparks(e, smallSpark = false){
     const now = performance.now();
-    const chars = Array.from(e.text || " ");
+    const chars = Array.from(e.text || "　");
     chars.forEach(ch=>{
       const ang = rand(0,Math.PI*2);
       const speed = smallSpark ? rand(0.1, 0.5) : rand(0.3,1.2);
@@ -459,7 +498,6 @@
   function scatterWord(e){
     e.consumed = true; 
     spawnSparks(e);
-    playMechanicalHiss(0.2, 500); // タップして弾けたときにも乾いたノイズ
     
     if (Math.random() < PROLIFERATE_CHANCE){
       const frags = splitWord(e.text).slice(0,5); 
@@ -493,6 +531,7 @@
   }
   canvas.addEventListener('pointerdown', handlePointer);
 
+  /* ---------- 開始 ---------- */
   const overlay = document.getElementById('overlay');
   const hud = document.getElementById('hud');
   const muteBtn = document.getElementById('muteBtn');
@@ -502,7 +541,6 @@
     if (started) return;
     started = true;
     audioEnabled = true;
-    initAudio();
     overlay.classList.add('hidden');
     hud.style.display = 'block';
     muteBtn.style.display = 'flex';
@@ -526,6 +564,7 @@
   muteBtn.addEventListener('click', ()=>{
     audioEnabled = !audioEnabled;
     muteBtn.textContent = audioEnabled ? '♪' : '×';
+    if (!audioEnabled && 'speechSynthesis' in window) speechSynthesis.cancel();
   });
 
 })();
