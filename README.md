@@ -133,7 +133,6 @@
       hue: rand(0,360),
       phase: rand(0, Math.PI*2),
       born: performance.now(),
-      // 個体ごとに寿命の「質」を変える
       life: rand(11000,17000) + fusions*3200 + len*180,
       alpha: 0,
       consumed: false,
@@ -141,7 +140,7 @@
       collapseStart: 0,
       collapseDuration: 0,
       nextPeel: 0,
-      peelInterval: 0,   // 崩れる速さ（個体差）
+      peelInterval: 0,
       lastInteraction: 0
     };
   }
@@ -240,11 +239,17 @@
     const totalH = chars.length*lineH;
     let y0 = e.y - totalH/2 + lineH/2;
     chars.forEach((ch,i)=>{
+      const cy = y0 + i * lineH;
       if (ch === '、' || ch === '。'){
-        // 縦組みで右肩に寄せる
-        ctx.fillText(ch, e.x + fontSize*0.52, y0+i*lineH - fontSize*0.28);
+        // 横書きグリフの墨が左下に寄っているため、
+        // 基準点を右上側に取り直して置く
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(ch, e.x + fontSize * 0.12, cy - fontSize * 0.72);
+        ctx.restore();
       } else {
-        ctx.fillText(ch, e.x, y0+i*lineH);
+        ctx.fillText(ch, e.x, cy);
       }
     });
     ctx.restore();
@@ -369,13 +374,10 @@
     e.collapseStart = now;
     const chars = Array.from(e.text);
     const len = Math.max(1, chars.length);
-    // 個体差：融合回数・長さ・乱数で「崩れ方」が変わる
-    // peelInterval が小さいほど早く剥がれる
     const base = reduceMotion ? 280 : 160;
     e.peelInterval = base + rand(40, 220) + e.fusions * 55 + len * 18;
     e.collapseDuration = e.peelInterval * len * rand(1.1, 1.8) + rand(400, 1200);
     e.nextPeel = now + rand(60, e.peelInterval * 0.5);
-    // 崩れる間は少し漂いが弱まる
     e.vx *= 0.7;
     e.vy *= 0.7;
   }
@@ -384,7 +386,6 @@
     const chars = Array.from(e.text);
     if (chars.length === 0) return;
 
-    // 端から、または稀に中ほどから剥がす
     let idx;
     if (chars.length <= 2 || Math.random() < 0.75){
       idx = Math.random() < 0.5 ? 0 : chars.length - 1;
@@ -400,7 +401,6 @@
     const ox = e.x + rand(-6, 6);
     const oy = e.y + rand(-6, 6);
 
-    // 破片として霧散
     sparks.push({
       ch, x: ox, y: oy,
       vx: Math.cos(ang)*speed + e.vx*0.3,
@@ -410,7 +410,6 @@
       hue: e.hue
     });
 
-    // ときどき短い命の小個体として分裂拡散
     if (ch !== '、' && ch !== '。' && Math.random() < 0.38 && entities.length < MAX_POP + 10){
       const frag = makeEntity(ch, ox, oy, 0,
         Math.cos(ang)*rand(0.15, 0.45),
@@ -421,7 +420,6 @@
       entities.push(frag);
     }
 
-    // 次の剥離タイミング（個体の peelInterval を軸に揺らぎ）
     e.nextPeel = now + e.peelInterval * rand(0.55, 1.25);
   }
 
@@ -470,13 +468,11 @@
         continue;
       }
 
-      // 寿命到来 → 崩壊開始（いきなり消さない）
       if (!e.collapsing && age >= e.life){
         beginCollapse(e, now);
       }
 
       if (e.collapsing){
-        // 徐々に文字を剥がす
         if (e.text.length > 0 && now >= e.nextPeel){
           peelCharacter(e, now);
         }
@@ -490,7 +486,6 @@
 
         if (e.text.length > 0) drawWord(e);
 
-        // 文字が尽きた、または崩壊時間を超えたら終了
         if (e.text.length === 0 || t >= 1){
           if (e.text.length > 0) dissolveWord(e);
           entities.splice(i,1);
@@ -524,10 +519,13 @@
       ctx.globalAlpha = clamp(1 - (age / s.life), 0, 1) * 0.85;
       ctx.fillStyle = `hsla(${s.hue},30%,40%,1)`;
       ctx.font = '14px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
       if (s.ch === '、' || s.ch === '。'){
-        ctx.fillText(s.ch, s.x + 7.2, s.y - 3.9);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(s.ch, s.x + 2, s.y - 11);
       } else {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.fillText(s.ch, s.x, s.y);
       }
       ctx.restore();
@@ -571,10 +569,8 @@
   }
 
   function scatterWord(e){
-    // 触れたときも、即消滅ではなく崩壊モードへ
     if (e.collapsing) return;
     const now = performance.now();
-    // 触覚刺激ではやや速く崩す
     beginCollapse(e, now);
     e.peelInterval *= 0.45;
     e.collapseDuration *= 0.55;
