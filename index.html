@@ -801,7 +801,7 @@
 
     return Array.from(fragments)
       .filter(Boolean)
-      .slice(0,14);
+      .slice(0,8);
   }
 
   function spawnSparks(e,small=false){
@@ -867,7 +867,7 @@
 
   function spawnFragmentEntity(fragment,e,now,intensity=1){
     if(!fragment) return;
-    if(entities.length>=MAX_POP+40) return;
+    if(entities.length>=MAX_POP+20) return;
 
     const minDimension = Math.min(W,H);
     const pos = scatterPosition(
@@ -952,8 +952,8 @@
     /*
       剥がれた文字の一部が、新しい個体になる。
     */
-    if(ch!=="、" && ch!=="。" && chance(0.68)){
-      const copies = chance(0.18) ? 2 : 1;
+    if(ch!=="、" && ch!=="。" && chance(0.42)){
+      const copies = chance(0.08) ? 2 : 1;
       for(let i=0;i<copies;i++){
         spawnFragmentEntity(ch,e,now,rand(0.9,1.35));
       }
@@ -971,7 +971,7 @@
     spawnSparks(e,false);
 
     pieces.forEach((fragment,index)=>{
-      if(index<2 || chance(0.70)){
+      if(index<1 || chance(0.48)){
         spawnFragmentEntity(
           fragment,
           e,
@@ -995,7 +995,7 @@
     const fragments = fractureText(e.text);
 
     fragments.forEach((fragment,index)=>{
-      if(index<4 || chance(0.78)){
+      if(index<3 || chance(0.52)){
         spawnFragmentEntity(
           fragment,
           e,
@@ -1013,7 +1013,7 @@
      ライフゲーム規則
   ========================================================= */
 
-  const MAX_POP = 170;
+  const MAX_POP = 102;
 
   let lastRuleTick = 0;
   let lastFusionTick = 0;
@@ -1286,7 +1286,7 @@
           chance(reproductionChance) &&
           a.fusions<10 &&
           b.fusions<10 &&
-          entities.length<MAX_POP+12
+          entities.length<MAX_POP+7
         ){
           const text=combine(a.text,b.text);
 
@@ -1650,8 +1650,8 @@
     lastFusionTick=lastFrame;
     lastMutationTick=lastFrame;
 
-    for(let i=0;i<28;i++) spawnPrimordial();
-    for(let i=0;i<18;i++) spawnInside();
+    for(let i=0;i<17;i++) spawnPrimordial();
+    for(let i=0;i<11;i++) spawnInside();
 
     requestAnimationFrame(frame);
 
