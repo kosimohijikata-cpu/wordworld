@@ -143,24 +143,47 @@
 
   // 複数の方向から言葉が漂い込んでくる（下・上・左・右）
   function spawnPrimordial(){
-    const edge = Math.floor(rand(0,4));
-    const speed = rand(0.10,0.24) * (reduceMotion?0.5:1);
-    let x,y,vx,vy;
-    if (edge===0){       // 下から上へ
-      x = rand(0,W); y = H+30;
-      vx = rand(-0.06,0.06); vy = -speed;
-    } else if (edge===1){ // 上から下へ
-      x = rand(0,W); y = -30;
-      vx = rand(-0.06,0.06); vy = speed;
-    } else if (edge===2){ // 左から右へ
-      x = -30; y = rand(0,H);
-      vx = speed; vy = rand(-0.06,0.06);
-    } else {               // 右から左へ
-      x = W+30; y = rand(0,H);
-      vx = -speed; vy = rand(-0.06,0.06);
-    }
-    entities.push(makeEntity(pick(WORDS), x, y, 0, vx, vy));
-  }
+
+  // 画面中心
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // 画面全体を囲む十分大きな半径
+  const radius = Math.sqrt(W * W + H * H) / 2 + 120;
+
+  // 360°どこからでも出現
+  const angle = Math.random() * Math.PI * 2;
+
+  const x = cx + Math.cos(angle) * radius;
+  const y = cy + Math.sin(angle) * radius;
+
+  // 中心方向
+  let dx = cx - x;
+  let dy = cy - y;
+
+  // 少し方向を乱す
+  dx += rand(-W * 0.4, W * 0.4);
+  dy += rand(-H * 0.4, H * 0.4);
+
+  const len = Math.hypot(dx, dy);
+
+  const speed = rand(0.08,0.22) * (reduceMotion ? 0.5 : 1);
+
+  const vx = dx / len * speed;
+  const vy = dy / len * speed;
+
+  entities.push(
+    makeEntity(
+      pick(WORDS),
+      x,
+      y,
+      0,
+      vx,
+      vy
+    )
+  );
+}
+  
 
   function combine(a, b){
     const seed = (a.length + b.length + fusedCount) % 7;
