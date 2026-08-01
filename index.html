@@ -92,12 +92,47 @@
   const WORDS = [
     "雨","光","波","夜","海","影","炎","霧","闇","樹","苔","塵",
     "存在","記憶","沈黙","痕跡","螺旋","反復","境界","呼吸","残響","余白","無限","消滅","胎動","忘却",
-    "構造","鏡像","器官","差異","閾","無意識","現存在","他者","言語","記述","祈り"
+    "構造","鏡像","器官","差異","閾","無意識","現存在","他者","言語","記述","祈り",
+    "気配","菌糸","風化","灰","琥珀","水脈","褶曲","裂け目","鼓膜","体温",
+    "漂流","堆積","深淵","真空","星屑","鉱石","余燼","微睡み","恩寵","潜勢",
+    "偶然","必然","虚無","空白","空洞","深層","表層","地平","地層","接続",
+    "特異点","特異性","重力","密度","粒子","波紋","位相","臨界","現勢",
+    "運命","自由","生成","変容","断絶","接触","関係","名残","細胞","血管",
+    "傷跡","瘢痕","息吹","微熱","精神","幻影","残像","幻視","幻聴","夢",
+    "覚醒","恍惚","郷愁","孤独","憂鬱","畏怖","希求","衝動","欠如","渇望",
+    "赦し","慈悲"
   ];
 
-  const PREFIXES = ["透明な","残酷な","不在の","静かな","構造としての","崩壊する","記述された"];
-  const SUFFIXES = ["をし続ける私","の彼方","を反復する","と他者","の限界","の残響","をまなざす"];
-  const CONNECTORS = ["の","と","へ","より","さえ","なす","たる","なる","は","、"];
+  const PREFIXES = [
+    "透明な","残酷な","不在の","静かな","構造としての","崩壊する","記述された",
+    "名もなき","忘れられた","漂流する","ひび割れた","眠れる","濡れた","乾いた",
+    "揺らぐ","沈んだ","燃え尽きた","青白い","かすかな","遠い","深い","虚ろな",
+    "裂けた","螺旋状の","折り重なる","反転した","終わりなき","未完成の","匿名の",
+    "失われた","生成する","溶解する","風化した","沈黙する","滲む","反射する",
+    "胎動する","無数の","最後の","最初の"
+  ];
+
+  const SUFFIXES = [
+    "をし続ける私","の彼方","を反復する","と他者","の限界","の残響","をまなざす",
+    "へ還る","に沈む","を抱く","へ漂う","を忘れる","を呼ぶ","を待つ","を拒む",
+    "を照らす","に触れる","から零れる","に溶ける","を夢見る","へ消える",
+    "を記憶する","を見失う","として存在する","であり続ける",
+    "の裂け目","の深淵","の気配","の影","の痕跡","の静寂","の輪郭",
+    "に名前はない","だけが残る","はまだ終わらない"
+  ];
+
+  const CONNECTORS = [
+    "の","と","へ","より","さえ","なす","たる","なる","は","、",
+    "に","で","から","まで","すら","だけ","しかし","そして","あるいは","なお",
+    "ただ","まだ","また","もし","ゆえに","として","によって","について",
+    "さながら","ある","ない","という","なき","ゆえの"
+  ];
+
+  const VERBS = [
+    "漂う","滲む","崩れる","眠る","燃える","消える","沈む","芽吹く","ほどける",
+    "風化する","反響する","侵食する","折り重なる","増殖する","忘れる","祈る",
+    "呼吸する","融ける","循環する","響く"
+  ];
 
   const rand = (a,b)=>a+Math.random()*(b-a);
   const pick = (arr)=>arr[(Math.random()*arr.length)|0];
@@ -123,9 +158,24 @@
   let sparks = [];
   let fusedCount = 0;
 
+  // 出現時から長めの語を混ぜる
+  function seedText(){
+    const r = Math.random();
+    if (r < 0.45) {
+      return pick(WORDS);
+    } else if (r < 0.70) {
+      return pick(PREFIXES) + pick(WORDS);
+    } else if (r < 0.88) {
+      return pick(WORDS) + pick(SUFFIXES);
+    } else {
+      return pick(WORDS) + pick(CONNECTORS) + pick(WORDS);
+    }
+  }
+
   function makeEntity(text, x, y, fusions, vx, vy){
-    const r = 20 + text.length*3.5 + fusions*4;
     const len = Array.from(text).length;
+    // 大きめの字面・当たり判定
+    const r = 28 + len * 4.2 + fusions * 5;
     return {
       text, x, y, r, fusions,
       vx: (vx!==undefined) ? vx : rand(-0.06,0.06),
@@ -133,7 +183,8 @@
       hue: rand(0,360),
       phase: rand(0, Math.PI*2),
       born: performance.now(),
-      life: rand(11000,17000) + fusions*3200 + len*180,
+      // 持続を延長（個体差あり）
+      life: rand(18000, 28000) + fusions * 4200 + len * 260,
       alpha: 0,
       consumed: false,
       collapsing: false,
@@ -145,7 +196,6 @@
     };
   }
 
-  // 上・右・下・左の四辺から漂い込む
   function spawnPrimordial(){
     const margin = 60;
     const side = (Math.random() * 4) | 0;
@@ -175,7 +225,7 @@
       vy = drift;
     }
 
-    entities.push(makeEntity(pick(WORDS), x, y, 0, vx, vy));
+    entities.push(makeEntity(seedText(), x, y, 0, vx, vy));
   }
 
   function combine(a, b){
@@ -190,8 +240,10 @@
       case 5: text = a + pick(CONNECTORS) + b; break;
       default: text = a + "、" + b;
     }
-    if (Array.from(text).length > 16){
-      text = a + b;
+    // 以前より長い結合を許容 → 大きい字が生まれやすい
+    if (Array.from(text).length > 22){
+      text = a + pick(CONNECTORS) + b;
+      if (Array.from(text).length > 22) text = a + b;
     }
     return text;
   }
@@ -220,10 +272,43 @@
     }catch(e){ }
   }
 
+  /* ---------- 句読点（右上に自前描画） ---------- */
+  function drawPunctationMark(ch, cellX, cellY, fontSize){
+    const px = cellX + fontSize * 0.28;
+    const py = cellY - fontSize * 0.30;
+    const r = Math.max(1.3, fontSize * 0.075);
+
+    if (ch === '。'){
+      ctx.beginPath();
+      ctx.arc(px, py, r * 1.15, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = Math.max(1.1, fontSize * 0.055);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(px + r * 0.15, py + r * 0.2);
+    ctx.quadraticCurveTo(
+      px + fontSize * 0.10, py + fontSize * 0.08,
+      px + fontSize * 0.06, py + fontSize * 0.16
+    );
+    ctx.stroke();
+    ctx.restore();
+  }
+
   /* ---------- 描画 ---------- */
   function drawWord(e){
-    const maxFontSize = clamp(e.r*0.4, 12, 24);
-    const fontSize = Array.from(e.text).length > 8 ? maxFontSize * 0.8 : maxFontSize;
+    // 大きめの本文サイズ
+    const maxFontSize = clamp(e.r * 0.48, 16, 34);
+    const len = Array.from(e.text).length;
+    const fontSize = len > 12 ? maxFontSize * 0.82 : (len > 8 ? maxFontSize * 0.92 : maxFontSize);
 
     ctx.save();
     ctx.globalAlpha = e.alpha;
@@ -235,19 +320,13 @@
     ctx.shadowBlur = 4;
 
     const chars = Array.from(e.text);
-    const lineH = fontSize*1.12;
-    const totalH = chars.length*lineH;
+    const lineH = fontSize * 1.14;
+    const totalH = chars.length * lineH;
     let y0 = e.y - totalH/2 + lineH/2;
     chars.forEach((ch,i)=>{
       const cy = y0 + i * lineH;
       if (ch === '、' || ch === '。'){
-        // 横書きグリフの墨が左下に寄っているため、
-        // 基準点を右上側に取り直して置く
-        ctx.save();
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(ch, e.x + fontSize * 0.12, cy - fontSize * 0.72);
-        ctx.restore();
+        drawPunctationMark(ch, e.x, cy, fontSize);
       } else {
         ctx.fillText(ch, e.x, cy);
       }
@@ -256,7 +335,7 @@
   }
 
   /* ---------- 生成・干渉規則 ---------- */
-  const MAX_POP = 60;
+  const MAX_POP = 96; // 密度アップ
   let lastRuleTick = 0;
   let lastFusionTick = 0;
   let lastSpawnTick = 0;
@@ -265,7 +344,7 @@
   const popEl = document.getElementById('pop');
 
   function applyLifeRules(now){
-    const R = 130;
+    const R = 150;
     for (let i=0;i<entities.length;i++){
       const e = entities[i];
       if (e.consumed || e.collapsing) continue;
@@ -278,12 +357,13 @@
         if (dx*dx+dy*dy < R*R) neighbors++;
       }
       const age = now - e.born;
-      if (neighbors===0 && age>4000){
-        e.life = Math.min(e.life, age+1400);
-      } else if (neighbors>=6){
-        e.life = Math.min(e.life, age+1100);
-      } else if (neighbors>=1 && neighbors<=4){
-        e.life += 260;
+      // 孤立・過密でも急には Trunc せず、やや長く保つ
+      if (neighbors===0 && age>6000){
+        e.life = Math.min(e.life, age+2200);
+      } else if (neighbors>=8){
+        e.life = Math.min(e.life, age+1800);
+      } else if (neighbors>=1 && neighbors<=5){
+        e.life += 420;
       }
     }
   }
@@ -291,20 +371,29 @@
   function applyMutations(now){
     for (let i=0;i<entities.length;i++){
       const e = entities[i];
-      if (e.consumed || e.collapsing || Array.from(e.text).length > 12) continue;
+      if (e.consumed || e.collapsing || Array.from(e.text).length > 18) continue;
 
       const age = now - e.born;
-      if (age > 2000 && Math.random() < 0.05) {
+      if (age > 1800 && Math.random() < 0.07) {
         let r = Math.random();
-        if (r < 0.4) {
+        if (r < 0.30) {
           e.text = pick(PREFIXES) + e.text;
-        } else if (r < 0.8) {
+        } else if (r < 0.55) {
           e.text = e.text + pick(SUFFIXES);
+        } else if (r < 0.75) {
+          e.text = e.text + "が" + pick(VERBS);
+        } else if (r < 0.90) {
+          e.text = pick(VERBS) + "、" + e.text;
         } else {
           e.text = e.text + "、あるいは" + pick(WORDS);
         }
-        e.r = 20 + e.text.length*3.5 + e.fusions*4;
-        e.life += 3000;
+
+        if (Array.from(e.text).length > 22) {
+          e.text = Array.from(e.text).slice(0, 20).join('');
+        }
+
+        e.r = 28 + e.text.length*4.2 + e.fusions*5;
+        e.life += 4500;
         sing(e.text);
         for(let j=0; j<3; j++) {
           spawnSparks({text: e.text.charAt(j%e.text.length), x:e.x, y:e.y, hue:e.hue}, true);
@@ -317,40 +406,40 @@
     for (let i=0;i<entities.length;i++){
       const a = entities[i];
       if (a.consumed || a.collapsing) continue;
-      if (now - a.lastInteraction < 2000) continue;
+      if (now - a.lastInteraction < 1800) continue;
 
       for (let j=i+1;j<entities.length;j++){
         const b = entities[j];
         if (b.consumed || b.collapsing) continue;
-        if (now - b.lastInteraction < 2000) continue;
+        if (now - b.lastInteraction < 1800) continue;
 
         const dx=a.x-b.x, dy=a.y-b.y;
         const dist = Math.sqrt(dx*dx+dy*dy);
 
-        if (dist < (a.r+b.r)*0.6){
+        if (dist < (a.r+b.r)*0.55){
           const randAction = Math.random();
 
-          if (randAction < 0.3) {
+          if (randAction < 0.25) {
             a.lastInteraction = now;
             b.lastInteraction = now;
 
-          } else if (randAction < 0.65) {
-            if (a.text.length < 14 && b.text.length < 14) {
+          } else if (randAction < 0.60) {
+            if (Array.from(a.text).length < 18 && Array.from(b.text).length < 18) {
               const aChar = Array.from(a.text)[0];
               const bChar = Array.from(b.text)[0];
               a.text = a.text + "の" + bChar;
               b.text = aChar + "と" + b.text;
               a.lastInteraction = now;
               b.lastInteraction = now;
-              a.r += 5; b.r += 5;
+              a.r += 6; b.r += 6;
               sing(a.text);
               spawnSparks({text: a.text.charAt(0), x:a.x, y:a.y, hue:a.hue}, true);
             }
 
           } else {
-            if (a.fusions < 6 && b.fusions < 6) {
+            if (a.fusions < 7 && b.fusions < 7) {
               const text = combine(a.text, b.text);
-              if (Array.from(text).length <= 16 && entities.length < MAX_POP+4){
+              if (Array.from(text).length <= 22 && entities.length < MAX_POP+6){
                 a.consumed = true; b.consumed = true;
                 const cvx = (a.vx+b.vx)/2;
                 const cvy = (a.vy+b.vy)/2;
@@ -368,16 +457,16 @@
     }
   }
 
-  /* ---------- 崩壊：文字を剥がして拡散 ---------- */
   function beginCollapse(e, now){
     e.collapsing = true;
     e.collapseStart = now;
     const chars = Array.from(e.text);
     const len = Math.max(1, chars.length);
-    const base = reduceMotion ? 280 : 160;
-    e.peelInterval = base + rand(40, 220) + e.fusions * 55 + len * 18;
-    e.collapseDuration = e.peelInterval * len * rand(1.1, 1.8) + rand(400, 1200);
-    e.nextPeel = now + rand(60, e.peelInterval * 0.5);
+    const base = reduceMotion ? 320 : 200;
+    // 崩壊自体もややゆっくり
+    e.peelInterval = base + rand(60, 280) + e.fusions * 70 + len * 22;
+    e.collapseDuration = e.peelInterval * len * rand(1.2, 2.0) + rand(600, 1600);
+    e.nextPeel = now + rand(80, e.peelInterval * 0.5);
     e.vx *= 0.7;
     e.vy *= 0.7;
   }
@@ -394,7 +483,7 @@
     }
     const ch = chars.splice(idx, 1)[0];
     e.text = chars.join('');
-    e.r = Math.max(12, 20 + e.text.length*3.5 + e.fusions*4);
+    e.r = Math.max(16, 28 + e.text.length*4.2 + e.fusions*5);
 
     const ang = rand(0, Math.PI*2);
     const speed = rand(0.08, 0.28);
@@ -406,16 +495,16 @@
       vx: Math.cos(ang)*speed + e.vx*0.3,
       vy: Math.sin(ang)*speed + e.vy*0.3 - 0.01,
       born: now,
-      life: rand(2200, 4800) + e.fusions*200,
+      life: rand(2600, 5200) + e.fusions*220,
       hue: e.hue
     });
 
-    if (ch !== '、' && ch !== '。' && Math.random() < 0.38 && entities.length < MAX_POP + 10){
+    if (ch !== '、' && ch !== '。' && Math.random() < 0.42 && entities.length < MAX_POP + 14){
       const frag = makeEntity(ch, ox, oy, 0,
         Math.cos(ang)*rand(0.15, 0.45),
         Math.sin(ang)*rand(0.15, 0.45) - rand(0.02, 0.08)
       );
-      frag.life = rand(2800, 7000) + e.fusions*400;
+      frag.life = rand(4000, 9000) + e.fusions*500;
       frag.born = now;
       entities.push(frag);
     }
@@ -434,7 +523,7 @@
         vx: Math.cos(ang)*speed,
         vy: Math.sin(ang)*speed - 0.015,
         born: now,
-        life: rand(2800, 4600),
+        life: rand(3000, 5200),
         hue: e.hue
       });
     });
@@ -448,15 +537,21 @@
     const dt = Math.min(now-lastFrame, 48);
     lastFrame = now;
 
-    if (now-lastSpawnTick > (reduceMotion?1400:850)){
+    // 出現頻度を上げて密度を稼ぐ
+    if (now-lastSpawnTick > (reduceMotion?1000:520)){
       lastSpawnTick = now;
-      if (entities.length < MAX_POP && Math.random()<0.7) spawnPrimordial();
+      if (entities.length < MAX_POP){
+        const burst = entities.length < MAX_POP * 0.45 ? 2 : 1;
+        for (let k=0;k<burst;k++){
+          if (entities.length < MAX_POP && Math.random() < 0.85) spawnPrimordial();
+        }
+      }
     }
     if (now-lastRuleTick > 550){ lastRuleTick = now; applyLifeRules(now); }
-    if (now-lastFusionTick > 300){ lastFusionTick = now; applyInteractions(now); }
-    if (now-lastMutationTick > 1000){ lastMutationTick = now; applyMutations(now); }
+    if (now-lastFusionTick > 280){ lastFusionTick = now; applyInteractions(now); }
+    if (now-lastMutationTick > 850){ lastMutationTick = now; applyMutations(now); }
 
-    ctx.fillStyle = 'rgba(251,250,246,0.16)';
+    ctx.fillStyle = 'rgba(251,250,246,0.14)';
     ctx.fillRect(0,0,W,H);
 
     for (let i=entities.length-1;i>=0;i--){
@@ -497,8 +592,8 @@
       e.y += e.vy*dt*0.10;
 
       const fadeIn = clamp(age/700, 0, 1);
-      const fadeOut = clamp((e.life-age)/1500, 0, 1);
-      e.alpha = Math.min(fadeIn, fadeOut) * 0.85;
+      const fadeOut = clamp((e.life-age)/2000, 0, 1);
+      e.alpha = Math.min(fadeIn, fadeOut) * 0.88;
 
       if (e.y < -e.r-40 || e.y > H+e.r+40 || e.x < -e.r-60 || e.x > W+e.r+60){
         entities.splice(i,1); continue;
@@ -518,12 +613,10 @@
       ctx.save();
       ctx.globalAlpha = clamp(1 - (age / s.life), 0, 1) * 0.85;
       ctx.fillStyle = `hsla(${s.hue},30%,40%,1)`;
-      ctx.font = '14px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif';
       if (s.ch === '、' || s.ch === '。'){
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(s.ch, s.x + 2, s.y - 11);
+        drawPunctationMark(s.ch, s.x, s.y, 16);
       } else {
+        ctx.font = '16px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(s.ch, s.x, s.y);
@@ -536,7 +629,7 @@
   }
 
   /* ---------- 接触と増殖 ---------- */
-  const PROLIFERATE_CHANCE = 0.85;
+  const PROLIFERATE_CHANCE = 0.88;
 
   function splitWord(text){
     const chars = Array.from(text);
@@ -544,7 +637,7 @@
     const parts = [];
     let i = 0;
     while (i < chars.length){
-      const len = Math.min(chars.length-i, (Math.random()<0.5) ? 1 : 2);
+      const len = Math.min(chars.length-i, (Math.random()<0.45) ? 1 : 2);
       parts.push(chars.slice(i,i+len).join(''));
       i += len;
     }
@@ -577,14 +670,14 @@
     e.nextPeel = now;
 
     if (Math.random() < PROLIFERATE_CHANCE){
-      const frags = splitWord(e.text).slice(0,5);
+      const frags = splitWord(e.text).slice(0,6);
       frags.forEach(frag=>{
-        if (entities.length >= MAX_POP+15) return;
+        if (entities.length >= MAX_POP+18) return;
         const ang = rand(0,Math.PI*2);
         const child = makeEntity(frag, e.x, e.y, Math.max(0, e.fusions-1));
         child.vx = Math.cos(ang)*rand(0.2,0.6);
         child.vy = -rand(0.05,0.15);
-        child.life = rand(15000, 22000);
+        child.life = rand(20000, 30000);
         entities.push(child);
         fusedCount++;
       });
@@ -624,7 +717,8 @@
     running = true;
     lastFrame = performance.now();
     lastSpawnTick = lastFrame; lastRuleTick = lastFrame; lastFusionTick = lastFrame; lastMutationTick = lastFrame;
-    for (let i=0;i<8;i++) spawnPrimordial();
+    // 初期密度を上げる
+    for (let i=0;i<16;i++) spawnPrimordial();
     requestAnimationFrame(frame);
 
     const touchHint = document.getElementById('touchHint');
